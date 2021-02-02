@@ -126,12 +126,28 @@ void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
     /* Cleanup of additional tcp_data_t fields goes here */
 }
 
-
+// P2a
 int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
     if (event == APPLICATION_CONNECT)
     {
         /* Your code goes here */
+        tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+
+        uint32_t ISS = rand();
+        tcp_data->ISS = ISS;
+        tcp_data->SND_UNA = ISS;
+        tcp_data->SND_NXT = ISS + 1;
+        tcp_packet_t *packet = malloc(sizeof(tcp_packet_t));
+        chitcpd_tcp_packet_create(entry, packet, NULL, 0);
+        tcphdr_t *header = TCP_PACKET_HEADER(packet);
+        header->syn = 1;
+        header->seq = ISS;
+        header->ack_seq = 0;
+        // header->win
+        chitcpd_send_tcp_packet(si, entry, packet);
+        chitcpd_update_tcp_state(si, entry, SYN_SENT);
+
     }
     else if (event == CLEANUP)
     {
@@ -148,6 +164,37 @@ int chitcpd_tcp_state_handle_LISTEN(serverinfo_t *si, chisocketentry_t *entry, t
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+        tcp_packet_t *packet = NULL;
+        if (tcp_data->pending_packets) {
+        /* tcp_data->pending_packets points to the head node of the list */
+            packet = tcp_data->pending_packets->packet;
+
+            /* This removes the list node at the head of the list */
+            chitcp_packet_list_pop_head(&tcp_data->pending_packets);
+        }
+        tcphdr_t *header = TCP_PACKET_HEADER(packet);
+        if (header->syn == 1) 
+        {
+            // if SYN message
+            // send back SYN message cua host and ACK
+            tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
+            chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
+            tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
+            uint32_t ISS = rand();
+            tcp_data->ISS = ISS;
+            tcp_data->SND_UNA = ISS;
+            tcp_data->SND_NXT = ISS + 1;
+            tcp_data->RCV_NXT = header->seq + 1;
+            //
+            send_header->syn = 1;
+            send_header->ack = 1;
+            send_header->seq = ISS;
+            send_header->ack_seq = header->seq + 1;
+            // send_header->win
+            chitcpd_send_tcp_packet(si, entry, send_packet);
+            chitcpd_update_tcp_state(si, entry, SYN_RCVD);
+        }
     }
     else
         chilog(WARNING, "In LISTEN state, received unexpected event.");
@@ -160,6 +207,24 @@ int chitcpd_tcp_state_handle_SYN_RCVD(serverinfo_t *si, chisocketentry_t *entry,
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        // if ACK
+        // ESTABLISHED
+        // done
+        tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+        tcp_packet_t *packet = NULL;
+        if (tcp_data->pending_packets) {
+        /* tcp_data->pending_packets points to the head node of the list */
+            packet = tcp_data->pending_packets->packet;
+
+            /* This removes the list node at the head of the list */
+            chitcp_packet_list_pop_head(&tcp_data->pending_packets);
+        }
+        tcphdr_t *header = TCP_PACKET_HEADER(packet);
+        if (header->ack == 1)
+        {
+            tcp_data->SND_UNA = header->ack;
+            chitcpd_update_tcp_state(si, entry, ESTABLISHED);
+        }  
     }
     else if (event == TIMEOUT_RTX)
     {
@@ -176,6 +241,37 @@ int chitcpd_tcp_state_handle_SYN_SENT(serverinfo_t *si, chisocketentry_t *entry,
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        // if SYN message
+        // transition to ESTABLISHED
+        // SEND back ACK
+        tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+        tcp_packet_t *packet = NULL;
+        if (tcp_data->pending_packets) {
+        /* tcp_data->pending_packets points to the head node of the list */
+            packet = tcp_data->pending_packets->packet;
+
+            /* This removes the list node at the head of the list */
+            chitcp_packet_list_pop_head(&tcp_data->pending_packets);
+        }
+        tcphdr_t *header = TCP_PACKET_HEADER(packet);
+        if ((header->syn == 1) && (header->ack == 1))
+        {
+            // if SYN message
+            // send back ACK
+            tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
+            chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
+            tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
+            tcp_data->SND_UNA = header->ack;
+            tcp_data->SND_NXT = header->ack;
+            tcp_data->RCV_NXT = header->seq + 1;
+            //
+            send_header->ack = 1;
+            send_header->seq = header->ack;
+            send_header->ack_seq = header->seq + 1;
+            // send_header->win
+            chitcpd_send_tcp_packet(si, entry, send_packet);
+            chitcpd_update_tcp_state(si, entry, ESTABLISHED);
+        }       
     }
     else if (event == TIMEOUT_RTX)
     {
@@ -192,18 +288,29 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
     if (event == APPLICATION_SEND)
     {
         /* Your code goes here */
+        // check if send buffer is empty
+        // if not send data (check send window)
     }
     else if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        // CASE: FIN
+        // check if seq number is valid to put into receive buffer
+        // check if message is FIN
+        // send ACK // CHECK
+        // transition to CLOSE_WAIT
+        // call application receive  
     }
     else if (event == APPLICATION_RECEIVE)
     {
         /* Your code goes here */
+        // update sliding window
     }
     else if (event == APPLICATION_CLOSE)
     {
         /* Your code goes here */
+        // send FIN seq to host B
+        // transition to FIN_WAIT1
     }
     else if (event == TIMEOUT_RTX)
     {
@@ -224,10 +331,17 @@ int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si, chisocketentry_t *entr
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        // If receive ACK
+        // transition to FIN_WAIT2
+
+        // If receive FIN
+        // send ACK
+        // transition to CLOSING
     }
     else if (event == APPLICATION_RECEIVE)
     {
         /* Your code goes here */
+
     }
     else if (event == TIMEOUT_RTX)
     {
@@ -249,6 +363,9 @@ int chitcpd_tcp_state_handle_FIN_WAIT_2(serverinfo_t *si, chisocketentry_t *entr
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        // if receive FIN from other host
+        // Send ACK
+        // transition to TIME_WAIT
     }
     else if (event == APPLICATION_RECEIVE)
     {
@@ -270,6 +387,25 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
     if (event == APPLICATION_CLOSE)
     {
         /* Your code goes here */
+        // send FIN to other host
+        // transition to LAST_ACK
+        // Queue this request until all preceding SENDs have been
+        // segmentized; then send a FIN segment, enter CLOSING state.
+        tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+
+        uint32_t ISS = rand();
+        tcp_data->ISS = ISS;
+        tcp_data->SND_UNA = ISS;
+        tcp_data->SND_NXT = ISS + 1;
+        tcp_packet_t *packet = malloc(sizeof(tcp_packet_t));
+        chitcpd_tcp_packet_create(entry, packet, NULL, 0);
+        tcphdr_t *header = TCP_PACKET_HEADER(packet);
+        header->syn = 1;
+        header->seq = rand();
+        header->ack_seq = 0;
+        // header->win
+        chitcpd_send_tcp_packet(si, entry, packet);
+        chitcpd_update_tcp_state(si, entry, SYN_SENT);
     }
     else if (event == PACKET_ARRIVAL)
     {
@@ -296,6 +432,8 @@ int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, 
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        // if receive ACK
+        // Transition to Time wait
     }
     else if (event == TIMEOUT_RTX)
     {
@@ -314,6 +452,7 @@ int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, 
 
 int chitcpd_tcp_state_handle_TIME_WAIT(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
+    chitcpd_update_tcp_state(si, entry, CLOSED);
     chilog(WARNING, "Running handler for TIME_WAIT. This should not happen.");
 
     return CHITCP_OK;
@@ -325,6 +464,8 @@ int chitcpd_tcp_state_handle_LAST_ACK(serverinfo_t *si, chisocketentry_t *entry,
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        // if receive ACK 
+        // CLOSE
     }
     else if (event == TIMEOUT_RTX)
     {
