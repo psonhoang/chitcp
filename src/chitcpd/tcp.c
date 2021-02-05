@@ -308,34 +308,42 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
             chitcp_packet_list_pop_head(&tcp_data->pending_packets);
         }
         tcphdr_t *header = TCP_PACKET_HEADER(packet);
-        // // check acceptability
-        // uint16_t SEG_LEN = SEG_LEN(packet);
-        // uint16_t RCV_WND = tcp_data->RCV_WND;
-        // if ((RCV_WND == 0) && (SEG_LEN == 0))
-        // {
-        //     if (header->seq != tcp_data->RCV_NXT) {
-        //         // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-        //     }
-        // }
-        // else if ((RCV_WND > 0) && (SEG_LEN == 0))
-        // {
-        //     if (header->seq != tcp_data->RCV_NXT) {
-        //         // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-        //     }
-        // }
-        // else if ((RCV_WND == 0) && (SEG_LEN > 0))
-        // {
-        //     // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-        // }
-        // else if ((RCV_WND > 0) && (SEG_LEN > 0))
-        // {
+        // check acceptability
+        // * TO DO for Tam: Acceptability
+        uint16_t SEG_LEN = SEG_LEN(packet);
+        uint16_t RCV_WND = tcp_data->RCV_WND;
+        if ((RCV_WND == 0) && (SEG_LEN == 0))
+        {
+            if (header->seq != tcp_data->RCV_NXT) {
+                // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+            }
+        }
+        else if ((RCV_WND > 0) && (SEG_LEN == 0))
+        {
+            if (header->seq != tcp_data->RCV_NXT) {
+                // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+            }
+        }
+        else if ((RCV_WND == 0) && (SEG_LEN > 0))
+        {
+            // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+        }
+        else if ((RCV_WND > 0) && (SEG_LEN > 0))
+        {
 
-        // }
+        }
+        // TODO for Hoang:
+        //    fifth check the ACK field,
+        // if the ACK bit is off drop the segment and return
+        //if the ACK bit is on
+        // TODO FOR Hoang: process the segment text
         if (header->fin == 1) 
         {
+
+            // TODO :HOANG
         // CASE: FIN
-        // check if seq number is valid to put into receive buffer
         // send ACK // CHECK
+        // pending RECEIVEs with same message
         // transition to CLOSE_WAIT
         // call application receive  
         
@@ -345,13 +353,17 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
     else if (event == APPLICATION_RECEIVE)
     {
         /* Your code goes here */
+        /* TODO: Hoang */
         // update sliding window
     }
     else if (event == APPLICATION_CLOSE)
     {
         /* Your code goes here */
+        // TODO: Tam
         // send FIN seq to host B
         // transition to FIN_WAIT1
+        // Queue this until all preceding SENDs have been segmentized, then
+        // form a FIN segment and send it. /* PROCESS BUFFER function */
         tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
         chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
         tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
@@ -381,6 +393,7 @@ int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si, chisocketentry_t *entr
 {
     if (event == PACKET_ARRIVAL)
     {
+        // TODO: Tam
         /* Your code goes here */
         // If receive ACK
         // transition to FIN_WAIT2
@@ -392,6 +405,7 @@ int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si, chisocketentry_t *entr
     else if (event == APPLICATION_RECEIVE)
     {
         /* Your code goes here */
+        /* TODO: HOANG */
 
     }
     else if (event == TIMEOUT_RTX)
@@ -414,6 +428,7 @@ int chitcpd_tcp_state_handle_FIN_WAIT_2(serverinfo_t *si, chisocketentry_t *entr
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        /* TODO: Tam */
         // if receive FIN from other host
         // Send ACK
         // transition to TIME_WAIT
@@ -438,6 +453,7 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
     if (event == APPLICATION_CLOSE)
     {
         /* Your code goes here */
+        /* TODO: Tam */
         // send FIN to other host
         // transition to LAST_ACK
         // Queue this request until all preceding SENDs have been
@@ -482,6 +498,7 @@ int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, 
 {
     if (event == PACKET_ARRIVAL)
     {
+        /* TODO :Tam */
         /* Your code goes here */
         // if receive ACK
         // Transition to Time wait
@@ -514,6 +531,7 @@ int chitcpd_tcp_state_handle_LAST_ACK(serverinfo_t *si, chisocketentry_t *entry,
 {
     if (event == PACKET_ARRIVAL)
     {
+        /* TODO :Tam */
         /* Your code goes here */
         // if receive ACK 
         // CLOSE
