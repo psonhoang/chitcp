@@ -128,6 +128,10 @@ void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
 
 // P2a
 
+/* TODO: hoang
+ * function process send buffer
+ */
+
 int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
@@ -270,6 +274,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 // error 
                 return 0;
             }
+            else {
             if (event == SYN_RCVD)
             {
                 if ((tcp_data->SND_UNA <= header->ack_seq) &&
@@ -284,6 +289,9 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             {
                 
             }
+            }
+            // seventh step: process segment
+            // TODO: Hoang
         }
     }
 }
@@ -472,10 +480,6 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
             chitcp_packet_list_pop_head(&tcp_data->pending_packets);
         }
         tcphdr_t *header = TCP_PACKET_HEADER(packet);
-        // TODO for Hoang:
-        //    fifth check the ACK field,
-        // if the ACK bit is off drop the segment and return
-        //if the ACK bit is on
         // TODO FOR Hoang: process the segment text
         if (header->fin == 1) 
         {
