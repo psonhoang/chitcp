@@ -140,6 +140,9 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         chitcp_packet_list_pop_head(&tcp_data->pending_packets);
     }
     tcphdr_t *header = TCP_PACKET_HEADER(packet);
+    tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
+    chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
+    tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
     if (event == CLOSED)
     {
         // do nothing
@@ -154,9 +157,6 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         }
         if (header->syn == 1)
         {
-            tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
-            chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
-            tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
             uint32_t ISS = rand();
             tcp_data->ISS = ISS;
             tcp_data->SND_UNA = ISS;
@@ -185,18 +185,15 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             //     // not acceptable
             //     return 0;
             // }
-            tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
-            chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
-            tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
             tcp_data->SND_UNA = header->ack;
             tcp_data->SND_NXT = header->ack;
             tcp_data->RCV_NXT = header->seq + 1;
             tcp_data->IRS = header->seq;
+            tcp_data->SND_WND = header->win;
             //
             send_header->ack = 1;
             send_header->seq = tcp_data->SND_NXT;
             send_header->ack_seq = tcp_data->RCV_NXT;
-            // send_header->win
             send_header->win = circular_buffer_available(&tcp_data->recv);
             chitcpd_send_tcp_packet(si, entry, send_packet);
             chitcpd_update_tcp_state(si, entry, ESTABLISHED);
@@ -204,7 +201,90 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
     }
     else 
     {
+        // SYN-RECEIVED STATE
+        // ESTABLISHED STATE
+        // FIN-WAIT-1 STATE
+        // FIN-WAIT-2 STATE
+        // CLOSE-WAIT STATE
+        // CLOSING STATE
+        // LAST-ACK STATE
+        // TIME-WAIT STATE
 
+        // check acceptability
+        // * TO DO for Tam: Acceptability
+        uint16_t SEG_LEN = SEG_LEN(packet);
+        uint16_t RCV_WND = tcp_data->RCV_WND;
+        if ((RCV_WND == 0) && (SEG_LEN == 0))
+        {
+            if (header->seq != tcp_data->RCV_NXT) {
+                send_header->ack = 1;
+                send_header->seq = tcp_data->SND_NXT;
+                send_header->ack_seq = tcp_data->RCV_NXT;
+                send_header->win = circular_buffer_available(&tcp_data->recv);
+                chitcpd_send_tcp_packet(si, entry, send_packet);
+            }
+        }
+        else if ((RCV_WND > 0) && (SEG_LEN == 0))
+        {
+            if (!((tcp_data->RCV_NXT <= header->seq) && 
+            (header->seq < (tcp_data->RCV_NXT + tcp_data->RCV_WND)))) {
+
+                send_header->ack = 1;
+                send_header->seq = tcp_data->SND_NXT;
+                send_header->ack_seq = tcp_data->RCV_NXT;
+                send_header->win = circular_buffer_available(&tcp_data->recv);
+                chitcpd_send_tcp_packet(si, entry, send_packet);
+            }
+        }
+        else if ((RCV_WND == 0) && (SEG_LEN > 0))
+        {
+            send_header->ack = 1;
+            send_header->seq = tcp_data->SND_NXT;
+            send_header->ack_seq = tcp_data->RCV_NXT;
+            send_header->win = circular_buffer_available(&tcp_data->recv);
+            chitcpd_send_tcp_packet(si, entry, send_packet);
+        }
+        else if ((RCV_WND > 0) && (SEG_LEN > 0))
+        {
+            if (!(((tcp_data->RCV_NXT <= header->seq) && 
+            (header->seq < (tcp_data->RCV_NXT + tcp_data->RCV_WND))) ||
+            ((tcp_data->RCV_NXT <= (header->seq + SEG_LEN - 1)) && 
+            ((header->seq + SEG_LEN - 1) < (tcp_data->RCV_NXT + tcp_data->RCV_WND)))))
+            {
+                send_header->ack = 1;
+                send_header->seq = tcp_data->SND_NXT;
+                send_header->ack_seq = tcp_data->RCV_NXT;
+                send_header->win = circular_buffer_available(&tcp_data->recv);
+                chitcpd_send_tcp_packet(si, entry, send_packet);
+            }
+        }
+        else 
+        {
+            if (header->syn == 1)
+            {
+                // error
+                return 0;
+            }
+            if (header->ack == 0)
+            {
+                // error 
+                return 0;
+            }
+            if (event == SYN_RCVD)
+            {
+                if ((tcp_data->SND_UNA <= header->ack_seq) &&
+                    (header->ack_seq <= tcp_data->SND_NXT))
+                {
+                    tcp_data->SND_UNA = header->ack;
+                    tcp_data->SND_NXT = header->ack;
+                    chitcpd_update_tcp_state(si, entry, ESTABLISHED);
+                }
+            }
+            else if (event == ESTABLISHED)
+            {
+                
+            }
+        }
     }
 }
 int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
@@ -303,9 +383,13 @@ int chitcpd_tcp_state_handle_SYN_RCVD(serverinfo_t *si, chisocketentry_t *entry,
         tcphdr_t *header = TCP_PACKET_HEADER(packet);
         if (header->ack == 1)
         {
+            if ((tcp_data->SND_UNA <= header->ack_seq) &&
+                (header->ack_seq <= tcp_data->SND_NXT))
+            {
             tcp_data->SND_UNA = header->ack;
             tcp_data->SND_NXT = header->ack;
             chitcpd_update_tcp_state(si, entry, ESTABLISHED);
+            }
         }  
     }
     else if (event == TIMEOUT_RTX)
@@ -388,30 +472,6 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
             chitcp_packet_list_pop_head(&tcp_data->pending_packets);
         }
         tcphdr_t *header = TCP_PACKET_HEADER(packet);
-        // check acceptability
-        // * TO DO for Tam: Acceptability
-        uint16_t SEG_LEN = SEG_LEN(packet);
-        uint16_t RCV_WND = tcp_data->RCV_WND;
-        if ((RCV_WND == 0) && (SEG_LEN == 0))
-        {
-            if (header->seq != tcp_data->RCV_NXT) {
-                // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-            }
-        }
-        else if ((RCV_WND > 0) && (SEG_LEN == 0))
-        {
-            if (header->seq != tcp_data->RCV_NXT) {
-                // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-            }
-        }
-        else if ((RCV_WND == 0) && (SEG_LEN > 0))
-        {
-            // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-        }
-        else if ((RCV_WND > 0) && (SEG_LEN > 0))
-        {
-
-        }
         // TODO for Hoang:
         //    fifth check the ACK field,
         // if the ACK bit is off drop the segment and return
