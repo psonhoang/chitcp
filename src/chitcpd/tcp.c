@@ -98,9 +98,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
-
-
 void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
@@ -136,11 +133,12 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     tcp_packet_t *packet = NULL;
-    if (tcp_data->pending_packets) {
-    /* tcp_data->pending_packets points to the head node of the list */
+    if (tcp_data->pending_packets)
+    {
+        /* tcp_data->pending_packets points to the head node of the list */
         packet = tcp_data->pending_packets->packet;
 
-    /* This removes the list node at the head of the list */
+        /* This removes the list node at the head of the list */
         chitcp_packet_list_pop_head(&tcp_data->pending_packets);
     }
     tcphdr_t *header = TCP_PACKET_HEADER(packet);
@@ -154,7 +152,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
     }
     else if (event == LISTEN)
     {
-        if (header->ack == 1) 
+        if (header->ack == 1)
         {
             // do nothing
             return 0;
@@ -165,13 +163,13 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             tcp_data->ISS = ISS;
             tcp_data->SND_UNA = ISS;
             tcp_data->SND_NXT = ISS + 1;
-            tcp_data->RCV_NXT  = header->seq + 1;
-            tcp_data->IRS = header->seq; 
+            tcp_data->RCV_NXT = header->seq + 1;
+            tcp_data->IRS = header->seq;
             //
             send_header->syn = 1;
             send_header->ack = 1;
             send_header->seq = ISS;
-            send_header->ack_seq = header->seq + 1; 
+            send_header->ack_seq = header->seq + 1;
             send_header->win = circular_buffer_capacity(&tcp_data->recv);
             chitcpd_send_tcp_packet(si, entry, send_packet);
             chitcpd_update_tcp_state(si, entry, SYN_RCVD);
@@ -184,7 +182,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         {
             // if SYN message
             // send back ACK
-            // if (!((tcp_data->SND_UNA <= header->ack_seq) && 
+            // if (!((tcp_data->SND_UNA <= header->ack_seq) &&
             //     (header->ack_seq <= tcp_data->SND_NXT)))
             // {
             //     // not acceptable
@@ -203,9 +201,9 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             chitcpd_send_tcp_packet(si, entry, send_packet);
             chitcpd_update_tcp_state(si, entry, ESTABLISHED);
             return 0;
-        }      
+        }
     }
-    else 
+    else
     {
         // SYN-RECEIVED STATE
         // ESTABLISHED STATE
@@ -222,7 +220,8 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         uint16_t RCV_WND = tcp_data->RCV_WND;
         if ((RCV_WND == 0) && (SEG_LEN == 0))
         {
-            if (header->seq != tcp_data->RCV_NXT) {
+            if (header->seq != tcp_data->RCV_NXT)
+            {
                 send_header->ack = 1;
                 send_header->seq = tcp_data->SND_NXT;
                 send_header->ack_seq = tcp_data->RCV_NXT;
@@ -233,8 +232,9 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         }
         else if ((RCV_WND > 0) && (SEG_LEN == 0))
         {
-            if (!((tcp_data->RCV_NXT <= header->seq) && 
-            (header->seq < (tcp_data->RCV_NXT + tcp_data->RCV_WND)))) {
+            if (!((tcp_data->RCV_NXT <= header->seq) &&
+                  (header->seq < (tcp_data->RCV_NXT + tcp_data->RCV_WND))))
+            {
 
                 send_header->ack = 1;
                 send_header->seq = tcp_data->SND_NXT;
@@ -255,10 +255,10 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         }
         else if ((RCV_WND > 0) && (SEG_LEN > 0))
         {
-            if (!(((tcp_data->RCV_NXT <= header->seq) && 
-            (header->seq < (tcp_data->RCV_NXT + tcp_data->RCV_WND))) ||
-            ((tcp_data->RCV_NXT <= (header->seq + SEG_LEN - 1)) && 
-            ((header->seq + SEG_LEN - 1) < (tcp_data->RCV_NXT + tcp_data->RCV_WND)))))
+            if (!(((tcp_data->RCV_NXT <= header->seq) &&
+                   (header->seq < (tcp_data->RCV_NXT + tcp_data->RCV_WND))) ||
+                  ((tcp_data->RCV_NXT <= (header->seq + SEG_LEN - 1)) &&
+                   ((header->seq + SEG_LEN - 1) < (tcp_data->RCV_NXT + tcp_data->RCV_WND)))))
             {
                 send_header->ack = 1;
                 send_header->seq = tcp_data->SND_NXT;
@@ -268,7 +268,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 return 0;
             }
         }
-        else 
+        else
         {
             if (header->syn == 1)
             {
@@ -277,10 +277,11 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             }
             if (header->ack == 0)
             {
-                // error 
+                // error
                 return 0;
             }
-            else {
+            else
+            {
                 if (event == SYN_RCVD)
                 {
                     if ((tcp_data->SND_UNA <= header->ack_seq) &&
@@ -292,7 +293,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                         return 0;
                     }
                 }
-                else 
+                else
                 {
                     if ((tcp_data->SND_UNA <= header->ack_seq) &&
                         (header->ack_seq <= tcp_data->SND_NXT))
@@ -311,7 +312,6 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                         }
                         else if (event == FIN_WAIT_2)
                         {
-
                         }
                         else if (event == CLOSING)
                         {
@@ -341,6 +341,20 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 }
                 // seventh step: process segment
                 // TODO: Hoang
+                if (event == ESTABLISHED || 
+                    event == FIN_WAIT_1 || 
+                    event == FIN_WAIT_2)
+                {
+                    /* Copy to recv buffer and updates RCV_NXT */
+                    int bytesWritten = circular_buffer_write(&tcp_data->recv, packet->raw, packet->length, false);
+                    tcp_data->RCV_NXT += bytesWritten;
+                    /* Send ACK */
+                    send_header->ack = 1;
+                    send_header->seq = tcp_data->SND_NXT;
+                    send_header->ack_seq = tcp_data->RCV_NXT;
+                    send_header->win = circular_buffer_available(&tcp_data->recv);
+                    chitcpd_send_tcp_packet(si, entry, send_packet);
+                }
 
                 {
                     // eighth step: Tam
@@ -348,7 +362,8 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     {
                         return 0;
                     }
-                    else {
+                    else
+                    {
                         if (header->fin == 1)
                         {
                             tcp_data->RCV_NXT = header->seq + 1;
@@ -376,7 +391,6 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                             }
                         }
                     }
-
                 }
             }
         }
@@ -402,7 +416,6 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, t
         header->win = circular_buffer_capacity(&tcp_data->recv);
         chitcpd_send_tcp_packet(si, entry, packet);
         chitcpd_update_tcp_state(si, entry, SYN_SENT);
-
     }
     else if (event == CLEANUP)
     {
@@ -421,15 +434,16 @@ int chitcpd_tcp_state_handle_LISTEN(serverinfo_t *si, chisocketentry_t *entry, t
         /* Your code goes here */
         tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
         tcp_packet_t *packet = NULL;
-        if (tcp_data->pending_packets) {
-        /* tcp_data->pending_packets points to the head node of the list */
+        if (tcp_data->pending_packets)
+        {
+            /* tcp_data->pending_packets points to the head node of the list */
             packet = tcp_data->pending_packets->packet;
 
             /* This removes the list node at the head of the list */
             chitcp_packet_list_pop_head(&tcp_data->pending_packets);
         }
         tcphdr_t *header = TCP_PACKET_HEADER(packet);
-        if (header->syn == 1) 
+        if (header->syn == 1)
         {
             // if SYN message
             // send back SYN message cua host and ACK
@@ -440,8 +454,8 @@ int chitcpd_tcp_state_handle_LISTEN(serverinfo_t *si, chisocketentry_t *entry, t
             tcp_data->ISS = ISS;
             tcp_data->SND_UNA = ISS;
             tcp_data->SND_NXT = ISS + 1;
-            tcp_data->RCV_NXT  = SEG_SEQ(packet) + 1; // header->seq + 1
-            tcp_data->IRS = SEG_SEQ(packet); // header->seq
+            tcp_data->RCV_NXT = SEG_SEQ(packet) + 1; // header->seq + 1
+            tcp_data->IRS = SEG_SEQ(packet);         // header->seq
             //
             send_header->syn = 1;
             send_header->ack = 1;
@@ -468,8 +482,9 @@ int chitcpd_tcp_state_handle_SYN_RCVD(serverinfo_t *si, chisocketentry_t *entry,
         // done
         tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
         tcp_packet_t *packet = NULL;
-        if (tcp_data->pending_packets) {
-        /* tcp_data->pending_packets points to the head node of the list */
+        if (tcp_data->pending_packets)
+        {
+            /* tcp_data->pending_packets points to the head node of the list */
             packet = tcp_data->pending_packets->packet;
 
             /* This removes the list node at the head of the list */
@@ -481,15 +496,15 @@ int chitcpd_tcp_state_handle_SYN_RCVD(serverinfo_t *si, chisocketentry_t *entry,
             if ((tcp_data->SND_UNA <= header->ack_seq) &&
                 (header->ack_seq <= tcp_data->SND_NXT))
             {
-            tcp_data->SND_UNA = header->ack;
-            tcp_data->SND_NXT = header->ack;
-            chitcpd_update_tcp_state(si, entry, ESTABLISHED);
+                tcp_data->SND_UNA = header->ack;
+                tcp_data->SND_NXT = header->ack;
+                chitcpd_update_tcp_state(si, entry, ESTABLISHED);
             }
-        }  
+        }
     }
     else if (event == TIMEOUT_RTX)
     {
-    /* Your code goes here */
+        /* Your code goes here */
     }
     else
         chilog(WARNING, "In SYN_RCVD state, received unexpected event.");
@@ -507,8 +522,9 @@ int chitcpd_tcp_state_handle_SYN_SENT(serverinfo_t *si, chisocketentry_t *entry,
         // SEND back ACK
         tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
         tcp_packet_t *packet = NULL;
-        if (tcp_data->pending_packets) {
-        /* tcp_data->pending_packets points to the head node of the list */
+        if (tcp_data->pending_packets)
+        {
+            /* tcp_data->pending_packets points to the head node of the list */
             packet = tcp_data->pending_packets->packet;
 
             /* This removes the list node at the head of the list */
@@ -534,11 +550,11 @@ int chitcpd_tcp_state_handle_SYN_SENT(serverinfo_t *si, chisocketentry_t *entry,
             send_header->win = circular_buffer_available(&tcp_data->recv);
             chitcpd_send_tcp_packet(si, entry, send_packet);
             chitcpd_update_tcp_state(si, entry, ESTABLISHED);
-        }       
+        }
     }
     else if (event == TIMEOUT_RTX)
     {
-    /* Your code goes here */
+        /* Your code goes here */
     }
     else
         chilog(WARNING, "In SYN_SENT state, received unexpected event.");
@@ -559,8 +575,9 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
     {
         /* Your code goes here */
         tcp_packet_t *packet = NULL;
-        if (tcp_data->pending_packets) {
-        /* tcp_data->pending_packets points to the head node of the list */
+        if (tcp_data->pending_packets)
+        {
+            /* tcp_data->pending_packets points to the head node of the list */
             packet = tcp_data->pending_packets->packet;
 
             /* This removes the list node at the head of the list */
@@ -568,24 +585,22 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
         }
         tcphdr_t *header = TCP_PACKET_HEADER(packet);
         // TODO FOR Hoang: process the segment text
-        if (header->fin == 1) 
+        if (header->fin == 1)
         {
 
             // TODO :HOANG
-        // CASE: FIN
-        // send ACK // CHECK
-        // pending RECEIVEs with same message
-        // transition to CLOSE_WAIT
-        // call application receive  
-        
+            // CASE: FIN
+            // send ACK // CHECK
+            // pending RECEIVEs with same message
+            // transition to CLOSE_WAIT
+            // call application receive
         }
-
     }
     else if (event == APPLICATION_RECEIVE)
     {
         /* Your code goes here */
-        /* TODO: Hoang */
-        // update sliding window
+        /* Update RCV_WND */
+        tcp_data->RCV_WND = circular_buffer_available(&tcp_data->recv);
     }
     else if (event == APPLICATION_CLOSE)
     {
@@ -606,7 +621,7 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
     }
     else if (event == TIMEOUT_RTX)
     {
-      /* Your code goes here */
+        /* Your code goes here */
     }
     else if (event == TIMEOUT_PST)
     {
@@ -620,6 +635,7 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
 
 int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
+    tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     if (event == PACKET_ARRIVAL)
     {
         // TODO: Tam
@@ -636,26 +652,26 @@ int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si, chisocketentry_t *entr
     else if (event == APPLICATION_RECEIVE)
     {
         /* Your code goes here */
-        /* TODO: HOANG */
-
+        /* Update RCV_WND */
+        tcp_data->RCV_WND = circular_buffer_available(&tcp_data->recv);
     }
     else if (event == TIMEOUT_RTX)
     {
-      /* Your code goes here */
+        /* Your code goes here */
     }
     else if (event == TIMEOUT_PST)
     {
         /* Your code goes here */
     }
     else
-       chilog(WARNING, "In FIN_WAIT_1 state, received unexpected event (%i).", event);
+        chilog(WARNING, "In FIN_WAIT_1 state, received unexpected event (%i).", event);
 
     return CHITCP_OK;
 }
 
-
 int chitcpd_tcp_state_handle_FIN_WAIT_2(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
+    tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
@@ -668,17 +684,18 @@ int chitcpd_tcp_state_handle_FIN_WAIT_2(serverinfo_t *si, chisocketentry_t *entr
     else if (event == APPLICATION_RECEIVE)
     {
         /* Your code goes here */
+        /* Update RCV_WND */
+        tcp_data->RCV_WND = tcp_data->recv.maxsize - tcp_data->recv.count;
     }
     else if (event == TIMEOUT_RTX)
     {
-      /* Your code goes here */
+        /* Your code goes here */
     }
     else
         chilog(WARNING, "In FIN_WAIT_2 state, received unexpected event (%i).", event);
 
     return CHITCP_OK;
 }
-
 
 int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
@@ -708,19 +725,17 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
     }
     else if (event == TIMEOUT_RTX)
     {
-      /* Your code goes here */
+        /* Your code goes here */
     }
     else if (event == TIMEOUT_PST)
     {
         /* Your code goes here */
     }
     else
-       chilog(WARNING, "In CLOSE_WAIT state, received unexpected event (%i).", event);
-
+        chilog(WARNING, "In CLOSE_WAIT state, received unexpected event (%i).", event);
 
     return CHITCP_OK;
 }
-
 
 int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
@@ -734,18 +749,17 @@ int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, 
     }
     else if (event == TIMEOUT_RTX)
     {
-      /* Your code goes here */
+        /* Your code goes here */
     }
     else if (event == TIMEOUT_PST)
     {
         /* Your code goes here */
     }
     else
-       chilog(WARNING, "In CLOSING state, received unexpected event (%i).", event);
+        chilog(WARNING, "In CLOSING state, received unexpected event (%i).", event);
 
     return CHITCP_OK;
 }
-
 
 int chitcpd_tcp_state_handle_TIME_WAIT(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
@@ -755,27 +769,26 @@ int chitcpd_tcp_state_handle_TIME_WAIT(serverinfo_t *si, chisocketentry_t *entry
     return CHITCP_OK;
 }
 
-
 int chitcpd_tcp_state_handle_LAST_ACK(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
     if (event == PACKET_ARRIVAL)
     {
         /* TODO :Tam */
         /* Your code goes here */
-        // if receive ACK 
+        // if receive ACK
         // CLOSE
         // DONE
     }
     else if (event == TIMEOUT_RTX)
     {
-      /* Your code goes here */
+        /* Your code goes here */
     }
     else if (event == TIMEOUT_PST)
     {
         /* Your code goes here */
     }
     else
-       chilog(WARNING, "In LAST_ACK state, received unexpected event (%i).", event);
+        chilog(WARNING, "In LAST_ACK state, received unexpected event (%i).", event);
 
     return CHITCP_OK;
 }
