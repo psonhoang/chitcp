@@ -340,7 +340,6 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     }
                 }
                 // seventh step: process segment
-                // TODO: Hoang
                 if (event == ESTABLISHED || 
                     event == FIN_WAIT_1 || 
                     event == FIN_WAIT_2)
