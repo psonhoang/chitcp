@@ -123,11 +123,41 @@ void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
     /* Cleanup of additional tcp_data_t fields goes here */
 }
 
-// P2a
+/* P2a */
 
-/* TODO: hoang
- * function process send buffer
- */
+void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
+{
+    /* Empties send buffer */
+    tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+    circular_buffer_t send_buf = tcp_data->send;
+    /* Segmentizes send buffer based on send window */
+    int totalBytesRead = 0;
+    int bytesRead;
+    while (bytesRead <= tcp_data->SND_WND)
+    {
+        /* Initialize send packet */
+        tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
+        tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
+        /* Send SND_WND bytes starting from SND_NXT */
+        uint8_t payload[TCP_MSS];
+        bytesRead = circular_buffer_read(&send_buf, payload, TCP_MSS, FALSE);
+        if (bytesRead > 0) {
+            totalBytesRead += bytesRead;
+            /* Create send packet */
+            chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
+            /* Update TCP variables and send header */
+            tcp_data->SND_UNA = tcp_data->SND_NXT;
+            tcp_data->SND_NXT = tcp_data->SND_NXT + bytesRead;
+            send_header->syn = 0;
+            send_header->ack_seq = tcp_data->SND_NXT;
+            send_header->seq = tcp_data->SND_NXT;
+            send_header->win = circular_buffer_capacity(&tcp_data->recv);
+            /* Send packet */
+            chitcpd_send_tcp_packet(si, entry, send_packet);
+        }
+        
+    }
+}
 
 int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
@@ -345,7 +375,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     event == FIN_WAIT_2)
                 {
                     /* Copy to recv buffer and updates RCV_NXT */
-                    int bytesWritten = circular_buffer_write(&tcp_data->recv, packet->raw, packet->length, false);
+                    int bytesWritten = circular_buffer_write(&tcp_data->recv, packet->raw, packet->length, true);
                     tcp_data->RCV_NXT += bytesWritten;
                     /* Send ACK */
                     send_header->ack = 1;
