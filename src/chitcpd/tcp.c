@@ -459,6 +459,7 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, t
     if (event == APPLICATION_CONNECT)
     {
         /* Your code goes here */
+        chilog(DEBUG, "[CLOSED] APPLICATION_CONNECT");
         tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
 
         uint32_t ISS = rand();
@@ -491,6 +492,7 @@ int chitcpd_tcp_state_handle_LISTEN(serverinfo_t *si, chisocketentry_t *entry, t
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        chilog(DEBUG, "[LISTEN] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
         // tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
         // tcp_packet_t *packet = NULL;
@@ -540,6 +542,7 @@ int chitcpd_tcp_state_handle_SYN_RCVD(serverinfo_t *si, chisocketentry_t *entry,
         // if ACK
         // ESTABLISHED
         // done
+        chilog(DEBUG, "[SYNC_RCVD] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
         // tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
         // tcp_packet_t *packet = NULL;
@@ -718,11 +721,13 @@ int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si, chisocketentry_t *entr
         // send ACK
         // transition to CLOSING
         // DONE
+        chilog(DEBUG, "[FIN_WAIT_1] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
     else if (event == APPLICATION_RECEIVE)
     {
         /* Your code goes here */
+        chilog(DEBUG, "[FIN_WAIT_1] APPLICATION_RECEIVE");
         /* Update RCV_WND */
         tcp_data->RCV_WND = circular_buffer_available(&tcp_data->recv);
     }
@@ -751,11 +756,13 @@ int chitcpd_tcp_state_handle_FIN_WAIT_2(serverinfo_t *si, chisocketentry_t *entr
         // Send ACK
         // transition to TIME_WAIT
         // DONE
+        chilog(DEBUG, "[FIN_WAIT_2] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
     else if (event == APPLICATION_RECEIVE)
     {
         /* Your code goes here */
+        chilog(DEBUG, "[FIN_WAIT_2] APPLICATION_RECEIVE");
         /* Update RCV_WND */
         tcp_data->RCV_WND = tcp_data->recv.maxsize - tcp_data->recv.count;
     }
@@ -781,6 +788,7 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
         // Queue this request until all preceding SENDs have been
         // segmentized; then send a FIN segment, enter LAST_ACK state.
         // DONE
+        chilog(DEBUG, "[CLOSE_WAIT] APPLICATION_CLOSE");
         while (circular_buffer_count(&tcp_data->send) != 0)
         {
             chitcpd_process_send_buffer(si, entry);
@@ -800,6 +808,7 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
     else if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
+        chilog(DEBUG, "[CLOSE_WAIT] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
     else if (event == TIMEOUT_RTX)
@@ -825,6 +834,7 @@ int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, 
         // if receive ACK
         // Transition to Time wait
         // DONE
+        chilog(DEBUG, "[CLOSING] PACKET_ARRIVAL");
     }
     else if (event == TIMEOUT_RTX)
     {
@@ -857,6 +867,7 @@ int chitcpd_tcp_state_handle_LAST_ACK(serverinfo_t *si, chisocketentry_t *entry,
         // if receive ACK
         // CLOSE
         // DONE
+        chilog(DEBUG, "[LAST_ACK] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
     else if (event == TIMEOUT_RTX)
