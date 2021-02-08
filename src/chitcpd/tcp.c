@@ -134,7 +134,7 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
     int totalBytesRead = circular_buffer_count(&send_buf);
     if (totalBytesRead == 0) 
     {
-        return 0;
+        return;
     }
     int possible_send_bytes = tcp_data->SND_WND - (tcp_data->SND_NXT - tcp_data->SND_UNA);
     int total_send_bytes = 0;
@@ -207,11 +207,11 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         if (header->ack == 1)
         {
             // do nothing
-            return 0;
+            //return 0;
         }
         if (header->syn == 1)
         {
-            uint32_t ISS = rand() * 10000;
+            uint32_t ISS = rand();
             tcp_data->ISS = ISS;
             tcp_data->SND_UNA = ISS;
             tcp_data->SND_NXT = ISS + 1;
@@ -222,11 +222,11 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             send_header->syn = 1;
             send_header->ack = 1;
             send_header->seq = ISS;
-            send_header->ack_seq = tcp_data->RCV_NXT;
+            send_header->ack_seq = header->seq + 1;
             send_header->win = circular_buffer_capacity(&tcp_data->recv);
             chitcpd_send_tcp_packet(si, entry, send_packet);
             chitcpd_update_tcp_state(si, entry, SYN_RCVD);
-            return 0;
+            //return 0;
         }
     }
     else if (event == SYN_SENT)
@@ -247,13 +247,26 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             tcp_data->IRS = header->seq;
             tcp_data->SND_WND = header->win;
             //
-            send_header->ack = 1;
-            send_header->seq = tcp_data->SND_NXT;
-            send_header->ack_seq = tcp_data->RCV_NXT;
-            send_header->win = tcp_data->RCV_WND;
-            chitcpd_send_tcp_packet(si, entry, send_packet);
-            chitcpd_update_tcp_state(si, entry, ESTABLISHED);
-            return 0;
+            if (tcp_data->SND_UNA > tcp_data->ISS)
+            {
+                send_header->ack = 1;
+                send_header->seq = tcp_data->SND_NXT;
+                send_header->ack_seq = tcp_data->RCV_NXT;
+                send_header->win = tcp_data->RCV_WND;
+                chitcpd_send_tcp_packet(si, entry, send_packet);
+                chitcpd_update_tcp_state(si, entry, ESTABLISHED);
+            }
+            else
+            {
+                send_header->ack = 1;
+                send_header->syn = 1;
+                send_header->seq = tcp_data->ISS;
+                send_header->ack_seq = tcp_data->RCV_NXT;
+                send_header->win = tcp_data->RCV_WND;
+                chitcpd_send_tcp_packet(si, entry, send_packet);
+                chitcpd_update_tcp_state(si, entry, ESTABLISHED);
+            }
+            //return 0;
         }
     }
     else
@@ -341,7 +354,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     tcp_data->SND_UNA = header->ack;
                     tcp_data->SND_NXT = header->ack;
                     chitcpd_update_tcp_state(si, entry, ESTABLISHED);
-                    return 0;
+                    //return 0;
                 }
             }
             else
@@ -448,7 +461,7 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, t
         /* Your code goes here */
         tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
 
-        uint32_t ISS = rand() * 10000;
+        uint32_t ISS = rand();
         tcp_data->ISS = ISS;
         tcp_data->SND_UNA = ISS;
         tcp_data->SND_NXT = ISS + 1;
