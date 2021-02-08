@@ -131,31 +131,50 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     circular_buffer_t send_buf = tcp_data->send;
     /* Segmentizes send buffer based on send window */
-    int totalBytesRead = 0;
+    int totalBytesRead = circular_buffer_count(&send_buf);
+    int possible_send_bytes = tcp_data->SND_WND - (tcp_data->SND_NXT - tcp_data->SND_UNA);
+    int total_send_bytes = 0;
     int bytesRead;
-    while (bytesRead <= tcp_data->SND_WND)
+    if (possible_send_bytes >= totalBytesRead)
+    {
+        total_send_bytes = totalBytesRead;
+    }
+    else
+    {
+        total_send_bytes = possible_send_bytes;
+    }
+    int payload_len;
+    while (total_send_bytes > 0)
     {
         /* Initialize send packet */
         tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
-        tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
         /* Send SND_WND bytes starting from SND_NXT */
-        uint8_t payload[TCP_MSS];
-        bytesRead = circular_buffer_read(&send_buf, payload, TCP_MSS, FALSE);
+        if (total_send_bytes >= TCP_MSS)
+        {
+            payload_len = TCP_MSS;
+        }
+        else
+        {
+            payload_len = total_send_bytes;
+        }
+        uint8_t payload[payload_len];
+        bytesRead = circular_buffer_read(&send_buf, payload, payload_len, FALSE);
         if (bytesRead > 0) {
-            totalBytesRead += bytesRead;
+            total_send_bytes -= bytesRead;
             /* Create send packet */
             chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
+            tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
             /* Update TCP variables and send header */
-            tcp_data->SND_UNA = tcp_data->SND_NXT;
+            // update payload
             tcp_data->SND_NXT = tcp_data->SND_NXT + bytesRead;
-            send_header->syn = 0;
-            send_header->ack_seq = tcp_data->SND_NXT;
+            send_header->ack = 1;
+            send_header->ack_seq = tcp_data->RCV_NXT;
             send_header->seq = tcp_data->SND_NXT;
             send_header->win = circular_buffer_capacity(&tcp_data->recv);
+            send_packet->raw = payload;
             /* Send packet */
             chitcpd_send_tcp_packet(si, entry, send_packet);
         }
-        
     }
 }
 
@@ -642,6 +661,7 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
         chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
         tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
         send_header->fin = 1;
+        send_header->ack = 1;
         send_header->seq = tcp_data->SND_NXT;
         send_header->ack_seq = tcp_data->RCV_NXT;
         send_header->win = circular_buffer_available(&tcp_data->recv);
@@ -742,6 +762,7 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
         chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
         tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
         send_header->fin = 1;
+        send_header->ack = 1;
         send_header->seq = tcp_data->SND_NXT;
         send_header->ack_seq = tcp_data->RCV_NXT;
         send_header->win = circular_buffer_available(&tcp_data->recv);
