@@ -132,11 +132,13 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
     circular_buffer_t send_buf = tcp_data->send;
     /* Segmentizes send buffer based on send window */
     int totalBytesRead = circular_buffer_count(&send_buf);
+    chilog(DEBUG, "[SEND] TOTAL BYTE IN SEND BUFFER IS %d", totalBytesRead);
     if (totalBytesRead == 0) 
     {
         return;
     }
     int possible_send_bytes = tcp_data->SND_WND - (tcp_data->SND_NXT - tcp_data->SND_UNA);
+    chilog(DEBUG, "[SEND] TOTAL SEND WINDOW IS %d", possible_send_bytes);
     int total_send_bytes = 0;
     int bytesRead;
     if (possible_send_bytes >= totalBytesRead)
@@ -147,24 +149,32 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
     {
         total_send_bytes = possible_send_bytes;
     }
+    chilog(DEBUG, "[SEND] TOTAL BYTE GOING TO BE SENT IS %d", total_send_bytes);
     int payload_len;
     while (total_send_bytes > 0)
     {
+        chilog(DEBUG, "[SEND] ENTER LOOP");
         /* Initialize send packet */
         tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
         /* Send SND_WND bytes starting from SND_NXT */
-        if (total_send_bytes >= TCP_MSS)
-        {
-            payload_len = TCP_MSS;
-        }
-        else
-        {
-            payload_len = total_send_bytes;
-        }
+        // if (total_send_bytes >= TCP_MSS)
+        // {
+        //     payload_len = TCP_MSS;
+        // }
+        // else
+        // {
+        //     payload_len = total_send_bytes + 20;
+        // }
+        payload_len = TCP_MSS;
+        chilog(DEBUG, "[SEND] TOTAL PAYLOAD LEN IS %d", payload_len);
         uint8_t payload[payload_len];
-        bytesRead = circular_buffer_read(&send_buf, payload, payload_len, FALSE);
+        bytesRead = circular_buffer_read(&send_buf, payload, payload_len, TRUE);
+        chilog(DEBUG, "[SEND] TOTAL BYTES READ FROM SENT BUFFER IS %d", bytesRead);
+        //chilog(DEBUG, "[SEND] SENT DATA IS %s", bytesRead);
+        chilog(DEBUG, "DATA REMAINING IN BUFFER IS %d", circular_buffer_count(&send_buf));
         if (bytesRead > 0) {
             total_send_bytes -= bytesRead;
+            chilog(DEBUG, "[SEND] TOTAL BYTES GOING TO BE SENT 2 IS %d", total_send_bytes);
             /* Create send packet */
             chitcpd_tcp_packet_create(entry, send_packet, payload, 0);
             tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
@@ -174,7 +184,7 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
             send_header->ack = 1;
             send_header->ack_seq = tcp_data->RCV_NXT;
             send_header->seq = tcp_data->SND_NXT;
-            send_header->win = circular_buffer_capacity(&tcp_data->recv);
+            send_header->win = tcp_data->RCV_WND;
             /* Send packet */
             chitcpd_send_tcp_packet(si, entry, send_packet);
         }
@@ -224,6 +234,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             tcp_data->IRS = header->seq;
             //chilog(DEBUG,"LISTEN receives sequence to be is %d", header->seq);
             circular_buffer_set_seq_initial(&tcp_data->recv, tcp_data->IRS + 1);
+            circular_buffer_set_seq_initial(&tcp_data->send, tcp_data->ISS + 1);
             //
             send_header->syn = 1;
             send_header->ack = 1;
@@ -255,6 +266,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             tcp_data->RCV_NXT = header->seq + 1;
             tcp_data->IRS = header->seq;
             tcp_data->SND_WND = header->win;
+            circular_buffer_set_seq_initial(&tcp_data->recv, tcp_data->IRS + 1);
             //
             if (tcp_data->SND_UNA > tcp_data->ISS)
             {
@@ -406,6 +418,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 {
                     tcp_data->SND_UNA = header->ack_seq;
                     tcp_data->SND_WND = header->win;
+                    chitcpd_process_send_buffer(si, entry);
                 }
                 else if (header->ack_seq > tcp_data->SND_NXT)
                 {
@@ -532,7 +545,7 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, t
         tcp_data->SND_UNA = ISS;
         tcp_data->SND_NXT = ISS + 1;
         tcp_data->RCV_WND = circular_buffer_capacity(&tcp_data->recv);
-        circular_buffer_set_seq_initial(&tcp_data->send, ISS + 1);
+        circular_buffer_set_seq_initial(&tcp_data->send, tcp_data->ISS + 1);
         tcp_packet_t *packet = malloc(sizeof(tcp_packet_t));
         chitcpd_tcp_packet_create(entry, packet, NULL, 0);
         tcphdr_t *header = TCP_PACKET_HEADER(packet);
