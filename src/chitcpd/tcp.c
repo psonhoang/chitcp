@@ -129,21 +129,21 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
 {
     /* Empties send buffer */
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
-    circular_buffer_t send_buf = tcp_data->send;
     /* Segmentizes send buffer based on send window */
-    int totalBytesRead = circular_buffer_count(&send_buf);
-    chilog(DEBUG, "[SEND] TOTAL BYTE IN SEND BUFFER IS %d", totalBytesRead);
-    if (totalBytesRead == 0) 
+    int bytes_in_send = circular_buffer_count(&tcp_data->send);
+    chilog(DEBUG, "[SEND] TOTAL BYTE IN SEND BUFFER IS %d", bytes_in_send);
+    if (bytes_in_send == 0) 
     {
         return;
     }
     int possible_send_bytes = tcp_data->SND_WND - (tcp_data->SND_NXT - tcp_data->SND_UNA);
+    possible_send_bytes = tcp_data->SND_WND;    // Needs checking?
     chilog(DEBUG, "[SEND] TOTAL SEND WINDOW IS %d", possible_send_bytes);
     int total_send_bytes = 0;
-    int bytesRead;
-    if (possible_send_bytes >= totalBytesRead)
+    int bytes_read;
+    if (possible_send_bytes >= bytes_in_send)
     {
-        total_send_bytes = totalBytesRead;
+        total_send_bytes = bytes_in_send;
     }
     else
     {
@@ -165,22 +165,21 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
         {
             payload_len = total_send_bytes;
         }
-        //payload_len = TCP_MSS;
         chilog(DEBUG, "[SEND] TOTAL PAYLOAD LEN IS %d", payload_len);
         uint8_t payload[payload_len];
-        bytesRead = circular_buffer_read(&send_buf, payload, payload_len, FALSE);
-        chilog(DEBUG, "[SEND] TOTAL BYTES READ FROM SENT BUFFER IS %d", bytesRead);
-        //chilog(DEBUG, "[SEND] SENT DATA IS %s", bytesRead);
-        chilog(DEBUG, "DATA REMAINING IN BUFFER IS %d", circular_buffer_count(&send_buf));
-        if (bytesRead > 0) {
-            total_send_bytes -= bytesRead;
+        bytes_read = circular_buffer_read(&tcp_data->send, payload, payload_len, FALSE);
+        chilog(DEBUG, "[SEND] TOTAL BYTES READ FROM SENT BUFFER IS %d", bytes_read);
+        //chilog(DEBUG, "[SEND] SENT DATA IS %s", bytes_read);
+        chilog(DEBUG, "DATA REMAINING IN BUFFER IS %d", circular_buffer_count(&tcp_data->send));
+        if (bytes_read > 0) {
+            total_send_bytes -= bytes_read;
             chilog(DEBUG, "[SEND] TOTAL BYTES GOING TO BE SENT 2 IS %d", total_send_bytes);
             /* Create send packet */
-            chitcpd_tcp_packet_create(entry, send_packet, payload, bytesRead);
+            chitcpd_tcp_packet_create(entry, send_packet, payload, bytes_read);
             tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
             /* Update TCP variables and send header */
             // update payload
-            tcp_data->SND_NXT = tcp_data->SND_NXT + bytesRead;
+            tcp_data->SND_NXT = tcp_data->SND_NXT + bytes_read;
             send_header->ack = 1;
             send_header->ack_seq = tcp_data->RCV_NXT;
             send_header->seq = tcp_data->SND_NXT;
@@ -470,7 +469,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 (tcp_state == FIN_WAIT_2))
             {
                 /* Copy to recv buffer and updates RCV_NXT */
-                if ((header->fin != 1) && (tcp_state == ESTABLISHED))
+                if ((header->fin != 1) && (tcp_state == ESTABLISHED) && TCP_PAYLOAD_START(packet) > 0)
                 {
                     int bytesWritten = circular_buffer_write(&tcp_data->recv, TCP_PAYLOAD_START(packet), TCP_PAYLOAD_LEN(packet), FALSE);
                     chilog(DEBUG, "[SEND] payload length: %d", TCP_PAYLOAD_LEN(packet));
