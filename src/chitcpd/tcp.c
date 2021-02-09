@@ -427,7 +427,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 {
                     if (header->fin != 1)
                     {
-                        tcp_data->SND_UNA += 1;
+                        //tcp_data->SND_UNA += 1;
                         chitcpd_update_tcp_state(si, entry, FIN_WAIT_2);
                         return 0;
                     }
@@ -438,6 +438,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 else if (tcp_state == CLOSING)
                 {
                     chitcpd_update_tcp_state(si, entry, TIME_WAIT);
+                    chitcpd_update_tcp_state(si, entry, CLOSED);
                     return 0;
                 }
                 else if (tcp_state == LAST_ACK)
@@ -466,6 +467,10 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     chitcpd_send_tcp_packet(si, entry, send_packet);
                 }
                 /* Send ACK */
+            }
+            else 
+            {
+                return 0;
             }
                 // eighth step: Tam
             if ((tcp_state == CLOSED) || (tcp_state == LISTEN) || (tcp_state == SYN_SENT))
@@ -504,6 +509,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                         /* Transitions to TIME_WAIT */
                         chilog(DEBUG, "[FIN_WAIT_2] Transitioning to TIME_WAIT");
                         chitcpd_update_tcp_state(si, entry, TIME_WAIT);
+                        chitcpd_update_tcp_state(si, entry, CLOSED);
                         return 0;
                     }
                 }
@@ -804,8 +810,8 @@ int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, 
 
 int chitcpd_tcp_state_handle_TIME_WAIT(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
 {
-    chilog(DEBUG, "[TIME_WAIT] Immediately moving into CLOSED state");
-    chitcpd_update_tcp_state(si, entry, CLOSED);
+    //chilog(DEBUG, "[TIME_WAIT] Immediately moving into CLOSED state");
+    //chitcpd_update_tcp_state(si, entry, CLOSED);
     chilog(WARNING, "Running handler for TIME_WAIT. This should not happen.");
 
     return CHITCP_OK;
