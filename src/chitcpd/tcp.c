@@ -472,6 +472,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 if ((header->fin != 1) && (tcp_state == ESTABLISHED))
                 {
                     int bytesWritten = circular_buffer_write(&tcp_data->recv, TCP_PAYLOAD_START(packet), TCP_PAYLOAD_LEN(packet), FALSE);
+                    chilog(DEBUG, "[SEND] bytes written is %d", bytesWritten);
                     tcp_data->RCV_NXT += bytesWritten;
                     tcp_data->RCV_WND = circular_buffer_available(&tcp_data->recv);
                     send_header->ack = 1;
