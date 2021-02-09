@@ -437,6 +437,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 }
                 else if (tcp_state == CLOSING)
                 {
+                    chilog(DEBUG, "[CLOSING] Transitioning to CLOSED state");
                     chitcpd_update_tcp_state(si, entry, TIME_WAIT);
                     chitcpd_update_tcp_state(si, entry, CLOSED);
                     return 0;
@@ -793,6 +794,7 @@ int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, 
         // Transition to Time wait
         // DONE
         chilog(DEBUG, "[CLOSING] PACKET_ARRIVAL");
+        chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
     else if (event == TIMEOUT_RTX)
     {
