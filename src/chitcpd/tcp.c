@@ -163,9 +163,9 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
         }
         else
         {
-            payload_len = total_send_bytes + TCP_HEADER_NOOPTIONS_SIZE;
+            payload_len = total_send_bytes;
         }
-        payload_len = TCP_MSS;
+        //payload_len = TCP_MSS;
         chilog(DEBUG, "[SEND] TOTAL PAYLOAD LEN IS %d", payload_len);
         uint8_t payload[payload_len];
         bytesRead = circular_buffer_read(&send_buf, payload, payload_len, FALSE);
