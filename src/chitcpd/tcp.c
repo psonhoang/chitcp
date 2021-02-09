@@ -417,7 +417,6 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     send_header->ack_seq = tcp_data->RCV_NXT;
                     send_header->win = tcp_data->RCV_WND;
                     chitcpd_send_tcp_packet(si, entry, send_packet);
-                    return 0;
                 }
                 else 
                 {
@@ -426,8 +425,9 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 }
                 if (tcp_state == FIN_WAIT_1)
                 {
-                    if (header->fin == 1)
+                    if (header->fin != 1)
                     {
+                        tcp_data->SND_UNA += 1;
                         chitcpd_update_tcp_state(si, entry, FIN_WAIT_2);
                         return 0;
                     }
@@ -443,25 +443,29 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 else if (tcp_state == LAST_ACK)
                 {
                     chilog(DEBUG, "[LAST_ACK] Transitioning to CLOSED state");
+
                     chitcpd_update_tcp_state(si, entry, CLOSED);
                     return 0;
                 }
             }
             // seventh step: process segment
-            if (header->fin != 1 && (tcp_state == ESTABLISHED || 
-                tcp_state == FIN_WAIT_1 || 
-                tcp_state == FIN_WAIT_2))
+            if ((tcp_state == ESTABLISHED) || 
+                (tcp_state == FIN_WAIT_1) || 
+                (tcp_state == FIN_WAIT_2))
             {
                 /* Copy to recv buffer and updates RCV_NXT */
-                int bytesWritten = circular_buffer_write(&tcp_data->recv, packet->raw, packet->length, true);
-                tcp_data->RCV_NXT += bytesWritten;
-                tcp_data->RCV_WND = circular_buffer_available(&tcp_data->recv);
+                if ((header->fin != 1) && (tcp_state == ESTABLISHED))
+                {
+                    int bytesWritten = circular_buffer_write(&tcp_data->recv, packet->raw, packet->length, true);
+                    tcp_data->RCV_NXT += bytesWritten;
+                    tcp_data->RCV_WND = circular_buffer_available(&tcp_data->recv);
+                    send_header->ack = 1;
+                    send_header->seq = tcp_data->SND_NXT;
+                    send_header->ack_seq = tcp_data->RCV_NXT;
+                    send_header->win = tcp_data->RCV_WND;
+                    chitcpd_send_tcp_packet(si, entry, send_packet);
+                }
                 /* Send ACK */
-                send_header->ack = 1;
-                send_header->seq = tcp_data->SND_NXT;
-                send_header->ack_seq = tcp_data->RCV_NXT;
-                send_header->win = tcp_data->RCV_WND;
-                chitcpd_send_tcp_packet(si, entry, send_packet);
             }
                 // eighth step: Tam
             if ((tcp_state == CLOSED) || (tcp_state == LISTEN) || (tcp_state == SYN_SENT))
@@ -473,7 +477,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 if (header->fin == 1)
                 {
                     /* Send ACK */
-                    tcp_data->RCV_NXT = header->seq + 1;
+                    tcp_data->RCV_NXT = header->seq + 1; // = 2
                     send_header->ack = 1;
                     send_header->seq = tcp_data->SND_NXT;
                     send_header->ack_seq = tcp_data->RCV_NXT;
@@ -491,8 +495,8 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     else if (tcp_state == FIN_WAIT_1)
                     {
                         /* Transitions to FIN_WAIT_2 */
-                        chilog(DEBUG, "[FIN_WAIT_1] Transititiong to FIN_WAIT_2");
-                        chitcpd_update_tcp_state(si, entry, FIN_WAIT_2);
+                        chilog(DEBUG, "[FIN_WAIT_1] Transititiong to CLOSING");
+                        chitcpd_update_tcp_state(si, entry, CLOSING);
                         return 0;
                     }
                     else if (tcp_state == FIN_WAIT_2)
@@ -641,6 +645,7 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
         send_header->ack_seq = tcp_data->RCV_NXT;
         send_header->win = tcp_data->RCV_WND;
         chitcpd_send_tcp_packet(si, entry, send_packet);
+        tcp_data->SND_NXT += 1;
         chitcpd_update_tcp_state(si, entry, FIN_WAIT_1);
     }
     else if (event == TIMEOUT_RTX)
@@ -749,6 +754,7 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
         send_header->ack_seq = tcp_data->RCV_NXT;
         send_header->win = tcp_data->RCV_WND;
         chitcpd_send_tcp_packet(si, entry, send_packet);
+        tcp_data->SND_NXT += 1;
         chitcpd_update_tcp_state(si, entry, LAST_ACK);
     }
     else if (event == PACKET_ARRIVAL)
