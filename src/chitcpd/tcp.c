@@ -124,88 +124,134 @@ void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
 }
 
 /* P2a */
+
+/* HELPER FUNCTION */
+
+/* This function frees a packet we create
+ * or remove from the pending queue
+ * Input: the packet we need to free
+ * Output: nothing, packet gets free
+ */
 void free_packet(tcp_packet_t *packet)
 {
-    /* Helper function to free packet */
+    /* free memories associated with the struct */
     chitcp_tcp_packet_free(packet);
+    /* free the packet itself */
     free(packet);
     return;
 }
 
+/* This function looks at the current state
+ * of the Transmission Control Block and
+ * send over as much data remaining in
+ * the host's send buffer as allowed
+ * by the other host's receive window
+ * Input: serverinfo_t *si, chisocketentry_t *entry
+ * Output: nothing, we just packet messages
+ * and send them
+ */
 void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
 {
-    /* Empties send buffer */
+    /* This function aims to empty send buffer */
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
-    /* Segmentizes send buffer based on send window */
+    /* bytes_in_send is the total bytes currently in the send buffer */
     int bytes_in_send = circular_buffer_count(&tcp_data->send);
     chilog(DEBUG, "[SEND] TOTAL BYTE IN SEND BUFFER IS %d", bytes_in_send);
     if (bytes_in_send == 0) 
     {
+        // If no bytes in send buffer, then return as we have nothing to send
         return;
     }
-    int possible_send_bytes = tcp_data->SND_WND - (tcp_data->SND_NXT - tcp_data->SND_UNA);
-    possible_send_bytes = tcp_data->SND_WND;    // Needs checking?
+    int possible_send_bytes = tcp_data->SND_WND;
     chilog(DEBUG, "[SEND] TOTAL SEND WINDOW IS %d", possible_send_bytes);
+    // total_send_bytes are total bytes we are going to send
     int total_send_bytes = 0;
     int bytes_read;
     if (possible_send_bytes >= bytes_in_send)
     {
+        /* If other host's receive window can take in 
+         * all bytes in the send buffer
+         * set total_send_bytes equal to number of bytes
+         * in send buffer
+         */
         total_send_bytes = bytes_in_send;
     }
     else
     {
+        /* If other host's receive window can't take in 
+         * all bytes in the send buffer
+         * set total_send_bytes equal to other host's receive window
+         */
         total_send_bytes = possible_send_bytes;
     }
-    chilog(DEBUG, "[SEND] TOTAL BYTE GOING TO BE SENT IS %d", total_send_bytes);
+    chilog(DEBUG, "[SEND] TOTAL BYTE GOING TO BE SENT IS %d", 
+                                            total_send_bytes);
     int payload_len;
     while (total_send_bytes > 0)
     {
-        chilog(DEBUG, "[SEND] ENTER LOOP");
+        //chilog(DEBUG, "[SEND] ENTER LOOP");
         /* Initialize send packet */
         tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
-        /* Send SND_WND bytes starting from SND_NXT */
         if (total_send_bytes >= TCP_MSS)
         {
+            /* if total_send_bytes > TCP_MSS, then
+             * we are going to segmentize the
+             * total_send_bytes
+             */
             payload_len = TCP_MSS;
         }
         else
         {
+            /* if total_send_bytes < TCP_MSS, then
+             * payload len is equal to
+             * total bytes we want to send
+             */
             payload_len = total_send_bytes;
         }
         chilog(DEBUG, "[SEND] TOTAL PAYLOAD LEN IS %d", payload_len);
         uint8_t payload[payload_len];
-        bytes_read = circular_buffer_read(&tcp_data->send, payload, payload_len, FALSE);
-        chilog(DEBUG, "[SEND] TOTAL BYTES READ FROM SENT BUFFER IS %d", bytes_read);
-        //chilog(DEBUG, "[SEND] SENT DATA IS %s", bytes_read);
-        chilog(DEBUG, "DATA REMAINING IN BUFFER IS %d", circular_buffer_count(&tcp_data->send));
+        bytes_read = circular_buffer_read(&tcp_data->send, payload, 
+                                                payload_len, FALSE);
+        chilog(DEBUG, "[SEND] TOTAL BYTES READ FROM SENT BUFFER IS %d", 
+                                                            bytes_read);
+        chilog(DEBUG, "DATA REMAINING IN BUFFER IS %d", 
+                                circular_buffer_count(&tcp_data->send));
         if (bytes_read > 0) {
+            // update num of bytes left we need to send
             total_send_bytes -= bytes_read;
-            chilog(DEBUG, "[SEND] TOTAL BYTES GOING TO BE SENT 2 IS %d", total_send_bytes);
             /* Create send packet */
-            chitcpd_tcp_packet_create(entry, send_packet, payload, payload_len);
+            chitcpd_tcp_packet_create(entry, send_packet, 
+                                                    payload, payload_len);
             tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
             /* Update TCP variables and send header */
-            // update payload
             tcp_data->SND_NXT = tcp_data->SND_NXT + bytes_read;
             send_header->ack = 1;
+            send_header->syn = 0;
+            send_header->fin = 0;
             send_header->ack_seq = tcp_data->RCV_NXT;
             send_header->seq = tcp_data->SND_NXT;
             send_header->win = tcp_data->RCV_WND;
             /* Send packet */
-            chilog(DEBUG, "[SEND] send payload's length: %d", TCP_PAYLOAD_LEN(send_packet));
+            chilog(DEBUG, "[SEND] send payload's length: %d", 
+                                        TCP_PAYLOAD_LEN(send_packet));
             chitcpd_send_tcp_packet(si, entry, send_packet);
             free_packet(send_packet);
         }
     }
 }
 
-int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+/* Function to deal with PACKET_ARRIVAL event for all states 
+ * Input: serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event
+ * Output: return 0 when we are done with sending packets and updating
+ * states
+ */
+int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     tcp_state_t tcp_state = entry->tcp_state;
-    //chilog(DEBUG, "[LISTEN] IT COMES TO THE PACKET_ARRIVAL HANDLER FUNCTION");
-    //chilog(DEBUG,"event is %d", event);
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     tcp_packet_t *packet = NULL;
+    /* Extract and remove packet at the top of the queue */
     if (tcp_data->pending_packets)
     {
         /* tcp_data->pending_packets points to the head node of the list */
@@ -216,6 +262,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         chitcp_packet_list_pop_head(&tcp_data->pending_packets);
     }
     tcphdr_t *header = TCP_PACKET_HEADER(packet);
+    /* Initialize packet to send over to the other host */
     tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
     chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
     tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
@@ -226,43 +273,43 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
     }
     else if (tcp_state == LISTEN)
     {
-        //chilog(DEBUG,"[LISTEN] IT COMES INSIDE LISTEN EVENT THE PACKET_ARRIVAL HANDLER FUNCTION");
         if (header->ack == 1)
         {
-            // do nothing
-            //return 0;
+            // not acceptable
+            return 0;
         }
         if (header->syn == 1)
         {
-            uint32_t ISS = 500;
+            /* Initialize ISS and set TCB variables accordingly */
+            uint32_t ISS = rand() * 100;
             tcp_data->ISS = ISS;
             tcp_data->SND_UNA = ISS;
             tcp_data->SND_NXT = ISS + 1;
             tcp_data->RCV_NXT = header->seq + 1;
             tcp_data->RCV_WND = circular_buffer_capacity(&tcp_data->recv);
             tcp_data->IRS = header->seq;
-            //chilog(DEBUG,"LISTEN receives sequence to be is %d", header->seq);
-            circular_buffer_set_seq_initial(&tcp_data->recv, tcp_data->IRS + 1);
-            circular_buffer_set_seq_initial(&tcp_data->send, tcp_data->ISS + 1);
-            //
+            circular_buffer_set_seq_initial(&tcp_data->recv, 
+                                                        tcp_data->IRS + 1);
+            circular_buffer_set_seq_initial(&tcp_data->send, 
+                                                        tcp_data->ISS + 1);
+            /* Fill in header for send packet with syn segment */
             send_header->syn = 1;
             send_header->ack = 1;
+            send_header->fin = 0;
             send_header->seq = ISS;
             send_header->ack_seq = header->seq + 1;
             send_header->win = tcp_data->RCV_WND;
             chitcpd_send_tcp_packet(si, entry, send_packet);
             free_packet(send_packet);
+            /* Transition to SYN_RCVD */
             chitcpd_update_tcp_state(si, entry, SYN_RCVD);
             return 0;
         }
     }
     else if (tcp_state == SYN_SENT)
     {
-        //chilog(DEBUG,"[LISTEN] IT COMES INSIDE SYN_SENT EVENT THE PACKET_ARRIVAL HANDLER FUNCTION");
         if (header->ack == 1)
         {
-            // if SYN message
-            // send back ACK
             if (!((tcp_data->SND_UNA <= header->ack_seq) &&
                 (header->ack_seq <= tcp_data->SND_NXT)))
             {
@@ -274,38 +321,44 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         {
             tcp_data->SND_UNA = header->ack_seq;
             tcp_data->SND_NXT = header->ack_seq;
-            //chilog(DEBUG,"[LISTEN] SYN_SENT receives ack sequence to be is %d", header->ack_seq);
-            
             tcp_data->RCV_NXT = header->seq + 1;
             tcp_data->IRS = header->seq;
             tcp_data->SND_WND = header->win;
-            circular_buffer_set_seq_initial(&tcp_data->recv, tcp_data->IRS + 1);
-            //
+            circular_buffer_set_seq_initial(&tcp_data->recv, 
+                                                tcp_data->IRS + 1);
             if (tcp_data->SND_UNA > tcp_data->ISS)
             {
+                // If our SYN has been acknowledged
                 send_header->ack = 1;
+                send_header->syn = 0;
+                send_header->fin = 0;
                 send_header->seq = tcp_data->SND_NXT;
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
                 chitcpd_send_tcp_packet(si, entry, send_packet);
                 free_packet(send_packet);
+                // Transition to ESTABLISHED
                 chitcpd_update_tcp_state(si, entry, ESTABLISHED);
             }
             else
             {
+                // If we haven't sent over SYN segment
                 send_header->ack = 1;
                 send_header->syn = 1;
+                send_header->fin = 0;
                 send_header->seq = tcp_data->ISS;
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
                 chitcpd_send_tcp_packet(si, entry, send_packet);
                 free_packet(send_packet);
+                // Transition to SYN_RCVD
                 chitcpd_update_tcp_state(si, entry, SYN_RCVD);
             }
             return 0;
         }
         else
         {
+            // If not a syn segment, ignore
             return 0;
         }
     }
@@ -320,18 +373,17 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         // LAST-ACK STATE
         // TIME-WAIT STATE
 
-        // check acceptability
-        // * TO DO for Tam: Acceptability
-        //chilog(DEBUG,"[LISTEN] IT COMES TO ELSE IN THE PACKET_ARRIVAL HANDLER FUNCTION");
+        /* FIRST: check acceptability */
         uint16_t SEG_LEN = SEG_LEN(packet);
         uint16_t RCV_WND = tcp_data->RCV_WND;
         if ((RCV_WND == 0) && (SEG_LEN == 0))
         {
-            //chilog(DEBUG,"[LISTEN] IT COMES TO FIRST ACCEPTABILITY TEST IN THE PACKET_ARRIVAL HANDLER FUNCTION");
             if (header->seq != tcp_data->RCV_NXT)
             {
                 chilog(DEBUG,"[LISTEN] IT DOESN'T PASS FIRST ACCEPTABILITY TEST IN THE PACKET_ARRIVAL HANDLER FUNCTION");
                 send_header->ack = 1;
+                send_header->syn = 0;
+                send_header->fin = 0;
                 send_header->seq = tcp_data->SND_NXT;
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
@@ -345,17 +397,19 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             if (!((tcp_data->RCV_NXT <= header->seq) &&
                 (header->seq < (tcp_data->RCV_NXT + tcp_data->RCV_WND))))
             {
-                if (tcp_data->RCV_NXT > header->seq)
-                {
-                    chilog(DEBUG, "[LISTEN] RCV_NXT: %d", tcp_data->RCV_NXT);
-                    chilog(DEBUG, "[LISTEN] header->seq: %d", header->seq);
-                    chilog(DEBUG,"[LISTEN] rcv_nxt > sequence number in SECOND ACCEPTABILITY TEST");
-                }
-                if (header->seq > (tcp_data->RCV_NXT + tcp_data->RCV_WND))
-                {
-                    chilog(DEBUG,"[LISTEN] sequence num > receive fram in SECOND ACCEPTABILITY TEST");
-                }
+                // if (tcp_data->RCV_NXT > header->seq)
+                // {
+                //     chilog(DEBUG, "[LISTEN] RCV_NXT: %d", tcp_data->RCV_NXT);
+                //     chilog(DEBUG, "[LISTEN] header->seq: %d", header->seq);
+                //     chilog(DEBUG,"[LISTEN] rcv_nxt > sequence number in SECOND ACCEPTABILITY TEST");
+                // }
+                // if (header->seq > (tcp_data->RCV_NXT + tcp_data->RCV_WND))
+                // {
+                //     chilog(DEBUG,"[LISTEN] sequence num > receive fram in SECOND ACCEPTABILITY TEST");
+                // }
                 send_header->ack = 1;
+                send_header->syn = 0;
+                send_header->fin = 0;
                 send_header->seq = tcp_data->SND_NXT;
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
@@ -368,6 +422,8 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
         {
             chilog(DEBUG,"[LISTEN] IT COMES TO THIRD ACCEPTABILITY TEST IN THE PACKET_ARRIVAL HANDLER FUNCTION");
             send_header->ack = 1;
+            send_header->syn = 0;
+            send_header->fin = 0;
             send_header->seq = tcp_data->SND_NXT;
             send_header->ack_seq = tcp_data->RCV_NXT;
             send_header->win = tcp_data->RCV_WND;
@@ -381,18 +437,13 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             if (!(((tcp_data->RCV_NXT <= header->seq) &&
                 (header->seq < (tcp_data->RCV_NXT + tcp_data->RCV_WND))) ||
                 ((tcp_data->RCV_NXT <= (header->seq + SEG_LEN - 1)) &&
-                ((header->seq + SEG_LEN - 1) < (tcp_data->RCV_NXT + tcp_data->RCV_WND)))))
+                ((header->seq + SEG_LEN - 1) < 
+                                (tcp_data->RCV_NXT + tcp_data->RCV_WND)))))
             {
-                // if (tcp_data->RCV_NXT > header->seq)
-                // {
-                //     chilog(DEBUG,"[LISTEN] rcv_nxt > sequence number in FOURTH ACCEPTABILITY TEST");
-                //     chilog(DEBUG,"rcv_next is %d", tcp_data->RCV_NXT);
-                //     chilog(DEBUG,"sequence_num is %d", header->seq);
-                //     chilog(DEBUG,"IRS is %d", tcp_data->IRS);
-                    
-                // }
                 chilog(DEBUG,"[LISTEN] IT DOESN'T PASS FOURTH ACCEPTABILITY TEST IN THE PACKET_ARRIVAL HANDLER FUNCTION");
                 send_header->ack = 1;
+                send_header->syn = 0;
+                send_header->fin = 0;
                 send_header->seq = tcp_data->SND_NXT;
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
@@ -401,17 +452,18 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 return 0;
             }
         }
-
+        /* FOURTH : check the SYN bit */
         if (header->syn == 1)
         {
             chilog(DEBUG,"[LISTEN] IT COMES TO HEADER SYN == 1 TEST IN THE PACKET_ARRIVAL HANDLER FUNCTION");
-                // error
+            // error
             return 0;
         }
+        /* FIFTH: check the ACK bit */
         if (header->ack == 0)
         {
-                // error
-                chilog(DEBUG,"WHEN ACK == 0 IN THE PACKET_ARRIVAL HANDLER FUNCTION");
+            // error
+            chilog(DEBUG,"WHEN ACK == 0 IN THE PACKET_ARRIVAL HANDLER FUNCTION");
             return 0;
         }
         else
@@ -422,11 +474,14 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 chilog(DEBUG,"[LISTEN] IT COMES INSIDE SYN_RCVD EVENT THE PACKET_ARRIVAL HANDLER FUNCTION");
                 chilog(DEBUG, "[LISTEN] header->ack = %d", header->ack);
                 chilog(DEBUG, "[LISTEN] tcp_data->ISS = %d", tcp_data->ISS);
-                chilog(DEBUG, "[LISTEN] tcp_data->SND_UNA = %d", tcp_data->SND_UNA);
-                chilog(DEBUG, "[LISTEN] tcp_data->SND_NEXT = %d", tcp_data->SND_NXT);
+                chilog(DEBUG, "[LISTEN] tcp_data->SND_UNA = %d", 
+                                                        tcp_data->SND_UNA);
+                chilog(DEBUG, "[LISTEN] tcp_data->SND_NEXT = %d", 
+                                                        tcp_data->SND_NXT);
                 if ((tcp_data->SND_UNA <= header->ack_seq) &&
                     (header->ack_seq <= tcp_data->SND_NXT))
                 {
+                    // acceptable segment
                     tcp_data->SND_UNA = header->ack_seq;
                     tcp_data->SND_NXT = header->ack_seq;
                     tcp_data->SND_WND = header->win;
@@ -446,10 +501,15 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 }
                 else if (header->ack_seq > tcp_data->SND_NXT)
                 {
-                    chilog(DEBUG, "[LISTEN] header->ack_seq: %d", header->ack_seq);
-                    chilog(DEBUG, "[LISTEN] tcp_data->SND_NXT: %d", tcp_data->SND_NXT);
+                    // ACK acks something not yet sent, send Ack
+                    chilog(DEBUG, "[LISTEN] header->ack_seq: %d", 
+                                                        header->ack_seq);
+                    chilog(DEBUG, "[LISTEN] tcp_data->SND_NXT: %d", 
+                                                        tcp_data->SND_NXT);
                     chilog(DEBUG, "[LISTEN] header->ack_seq > tcp_data->SND_NXT");
                     send_header->ack = 1;
+                    send_header->syn = 0;
+                    send_header->fin = 0;
                     send_header->seq = tcp_data->SND_NXT;
                     send_header->ack_seq = tcp_data->RCV_NXT;
                     send_header->win = tcp_data->RCV_WND;
@@ -458,6 +518,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 }
                 else 
                 {
+                    // If the ACK is a duplicate
                     //ignore
                     return 0;
                 }
@@ -465,7 +526,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 {
                     if (header->fin != 1)
                     {
-                        //tcp_data->SND_UNA += 1;
+                        // If not the second case where CLOSING is involved
                         chitcpd_update_tcp_state(si, entry, FIN_WAIT_2);
                         return 0;
                     }
@@ -483,39 +544,46 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 else if (tcp_state == LAST_ACK)
                 {
                     chilog(DEBUG, "[LAST_ACK] Transitioning to CLOSED state");
-
                     chitcpd_update_tcp_state(si, entry, CLOSED);
                     return 0;
                 }
             }
-            // seventh step: process segment
+            /* SEVENTH: process segment */
             if ((tcp_state == ESTABLISHED) || 
                 (tcp_state == FIN_WAIT_1) || 
                 (tcp_state == FIN_WAIT_2))
             {
                 /* Copy to recv buffer and updates RCV_NXT */
-                if ((header->fin != 1) && (tcp_state == ESTABLISHED) && TCP_PAYLOAD_LEN(packet) > 0)
+                if ((header->fin != 1) && (tcp_state == ESTABLISHED)
+                                            && (TCP_PAYLOAD_LEN(packet) > 0))
                 {
-                    int bytesWritten = circular_buffer_write(&tcp_data->recv, TCP_PAYLOAD_START(packet), TCP_PAYLOAD_LEN(packet), FALSE);
-                    chilog(DEBUG, "[SEND] payload length: %d", TCP_PAYLOAD_LEN(packet));
-                    chilog(DEBUG, "[SEND] bytes written is %d", bytesWritten);
-                    tcp_data->RCV_NXT += bytesWritten;
+                    int bytes_written = circular_buffer_write(&tcp_data->recv,
+                                                    TCP_PAYLOAD_START(packet),
+                                                    TCP_PAYLOAD_LEN(packet), 
+                                                    FALSE);
+                    chilog(DEBUG, "[SEND] payload length: %d", 
+                                                TCP_PAYLOAD_LEN(packet));
+                    chilog(DEBUG, "[SEND] bytes written is %d", 
+                                                bytes_written);
+                    tcp_data->RCV_NXT += bytes_written;
                     tcp_data->RCV_WND = circular_buffer_available(&tcp_data->recv);
                     send_header->ack = 1;
+                    send_header->syn = 0;
+                    send_header->fin = 0;
                     send_header->seq = tcp_data->SND_NXT;
                     send_header->ack_seq = tcp_data->RCV_NXT;
                     send_header->win = tcp_data->RCV_WND;
                     chitcpd_send_tcp_packet(si, entry, send_packet);
                     free_packet(send_packet);
                 }
-                /* Send ACK */
             }
             else 
             {
                 return 0;
             }
-                // eighth step: Tam
-            if ((tcp_state == CLOSED) || (tcp_state == LISTEN) || (tcp_state == SYN_SENT))
+            /* EIGHT: Check FIN bit */
+            if ((tcp_state == CLOSED) || (tcp_state == LISTEN) || 
+                                            (tcp_state == SYN_SENT))
             {
                 return 0;
             }
@@ -524,8 +592,10 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 if (header->fin == 1)
                 {
                     /* Send ACK */
-                    tcp_data->RCV_NXT = header->seq + 1; // = 2
+                    tcp_data->RCV_NXT = header->seq + 1;
                     send_header->ack = 1;
+                    send_header->syn = 0;
+                    send_header->fin = 0;
                     send_header->seq = tcp_data->SND_NXT;
                     send_header->ack_seq = tcp_data->RCV_NXT;
                     send_header->win = tcp_data->RCV_WND;
@@ -565,30 +635,38 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
     }
 }
 
-int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+/* END OF HELPER FUNCTION */
+
+int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     if (event == APPLICATION_CONNECT)
     {
         /* Your code goes here */
         chilog(DEBUG, "[CLOSED] APPLICATION_CONNECT");
         tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
-
-        uint32_t ISS = 0;
+        /* Setting ISS and update TCB variables accordingly */
+        uint32_t ISS = rand() * 100;
         tcp_data->ISS = ISS;
         tcp_data->SND_UNA = ISS;
         tcp_data->SND_NXT = ISS + 1;
         tcp_data->RCV_WND = circular_buffer_capacity(&tcp_data->recv);
         circular_buffer_set_seq_initial(&tcp_data->send, tcp_data->ISS + 1);
+        /* Create packet with syn segment to send
+         * to the other host
+         */
         tcp_packet_t *packet = malloc(sizeof(tcp_packet_t));
         chitcpd_tcp_packet_create(entry, packet, NULL, 0);
         tcphdr_t *header = TCP_PACKET_HEADER(packet);
         header->syn = 1;
+        header->ack = 0;
+        header->fin = 0;
         header->seq = ISS;
-        chilog(DEBUG,"ISS_A is %d", ISS);
         header->ack_seq = 0;
         header->win = tcp_data->RCV_WND;
         chitcpd_send_tcp_packet(si, entry, packet);
         free_packet(packet);
+        /* Transition to SYN_SENT */
         chitcpd_update_tcp_state(si, entry, SYN_SENT);
     }
     else if (event == CLEANUP)
@@ -601,7 +679,8 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, t
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_LISTEN(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_LISTEN(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     if (event == PACKET_ARRIVAL)
     {
@@ -615,14 +694,12 @@ int chitcpd_tcp_state_handle_LISTEN(serverinfo_t *si, chisocketentry_t *entry, t
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_SYN_RCVD(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_SYN_RCVD(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
-        // if ACK
-        // ESTABLISHED
-        // done
         chilog(DEBUG, "[SYNC_RCVD] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
@@ -636,14 +713,12 @@ int chitcpd_tcp_state_handle_SYN_RCVD(serverinfo_t *si, chisocketentry_t *entry,
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_SYN_SENT(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_SYN_SENT(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     if (event == PACKET_ARRIVAL)
     {
         /* Your code goes here */
-        // if SYN message
-        // transition to ESTABLISHED
-        // SEND back ACK
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
     else if (event == TIMEOUT_RTX)
@@ -656,14 +731,14 @@ int chitcpd_tcp_state_handle_SYN_SENT(serverinfo_t *si, chisocketentry_t *entry,
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     if (event == APPLICATION_SEND)
     {
         /* Your code goes here */
-        // check if send buffer is empty
-        // if not send data (check send window)
+        /* send data from send buffer to other host */
         chitcpd_process_send_buffer(si, entry);
     }
     else if (event == PACKET_ARRIVAL)
@@ -683,24 +758,30 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
         chilog(DEBUG, "[ESTABLISHED] APPLICATION_CLOSE");
         /* Mark the socket is closing */
         tcp_data->closing = true;
-        /* Clear send buffer */
+        /* Before closing the connection, send over
+         * all data remaining in send buffer
+         */
         while (circular_buffer_count(&tcp_data->send) != 0)
         {
-            chilog(DEBUG, "[ESTABLISHED] APPLICATION_CLOSE - stuck in send loop!");
+            //chilog(DEBUG, "[ESTABLISHED] APPLICATION_CLOSE - stuck in send loop!");
             // tcp_data is updated during these sends
             chitcpd_process_send_buffer(si, entry);
         }
+        /* Create packet with fin segment to send over to other host */
         tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
         chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
         tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
         send_header->fin = 1;
         send_header->ack = 1;
+        send_header->syn = 0;
         send_header->seq = tcp_data->SND_NXT;
         send_header->ack_seq = tcp_data->RCV_NXT;
         send_header->win = tcp_data->RCV_WND;
         chitcpd_send_tcp_packet(si, entry, send_packet);
         free_packet(send_packet);
+        /* Update SND_NXT after sending fin segment */
         tcp_data->SND_NXT += 1;
+        /* Transition to FIN_WAIT_1 */
         chitcpd_update_tcp_state(si, entry, FIN_WAIT_1);
     }
     else if (event == TIMEOUT_RTX)
@@ -717,21 +798,12 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     if (event == PACKET_ARRIVAL)
     {
-        // TODO: Tam
-        /* Your code goes here */
-        // If receive ACK
-        // transition to FIN_WAIT2
-        //chitcpd_update_tcp_state(si, entry, FIN_WAIT_2);
-
-        // If receive FIN
-        // send ACK
-        // transition to CLOSING
-        // DONE
         chilog(DEBUG, "[FIN_WAIT_1] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
@@ -756,17 +828,12 @@ int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si, chisocketentry_t *entr
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_FIN_WAIT_2(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_FIN_WAIT_2(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     if (event == PACKET_ARRIVAL)
     {
-        /* Your code goes here */
-        /* TODO: Tam */
-        // if receive FIN from other host
-        // Send ACK
-        // transition to TIME_WAIT
-        // DONE
         chilog(DEBUG, "[FIN_WAIT_2] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
@@ -787,30 +854,37 @@ int chitcpd_tcp_state_handle_FIN_WAIT_2(serverinfo_t *si, chisocketentry_t *entr
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     if (event == APPLICATION_CLOSE)
     {
         /* Your code goes here */
         chilog(DEBUG, "[CLOSE_WAIT] APPLICATION_CLOSE");
+        /* Before closing the connection, send over
+         * all data remaining in send buffer
+         */
         while (circular_buffer_count(&tcp_data->send) != 0)
         {
             chilog(DEBUG, "[CLOSE_WAIT] stuck in send buffer loop!");
             chitcpd_process_send_buffer(si, entry);
         }
-        tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+        // Create a packet with fin segment to send over to the other host
         tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
         chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
         tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
         send_header->fin = 1;
         send_header->ack = 1;
+        send_header->syn = 0;
         send_header->seq = tcp_data->SND_NXT;
         send_header->ack_seq = tcp_data->RCV_NXT;
         send_header->win = tcp_data->RCV_WND;
         chitcpd_send_tcp_packet(si, entry, send_packet);
         free_packet(send_packet);
+        // Update SND_NXT after having sent fin segment
         tcp_data->SND_NXT += 1;
+        // Transition to LAST_ACK
         chitcpd_update_tcp_state(si, entry, LAST_ACK);
     }
     else if (event == PACKET_ARRIVAL)
@@ -833,15 +907,11 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     if (event == PACKET_ARRIVAL)
     {
-        /* TODO :Tam */
-        /* Your code goes here */
-        // if receive ACK
-        // Transition to Time wait
-        // DONE
         chilog(DEBUG, "[CLOSING] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
@@ -859,24 +929,19 @@ int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si, chisocketentry_t *entry, 
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_TIME_WAIT(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_TIME_WAIT(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
-    //chilog(DEBUG, "[TIME_WAIT] Immediately moving into CLOSED state");
-    //chitcpd_update_tcp_state(si, entry, CLOSED);
     chilog(WARNING, "Running handler for TIME_WAIT. This should not happen.");
 
     return CHITCP_OK;
 }
 
-int chitcpd_tcp_state_handle_LAST_ACK(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
+int chitcpd_tcp_state_handle_LAST_ACK(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
 {
     if (event == PACKET_ARRIVAL)
     {
-        /* TODO :Tam */
-        /* Your code goes here */
-        // if receive ACK
-        // CLOSE
-        // DONE
         chilog(DEBUG, "[LAST_ACK] PACKET_ARRIVAL");
         chitcpd_tcp_handle_PACKET_ARRIVAL(si, entry, event);
     }
@@ -897,3 +962,4 @@ int chitcpd_tcp_state_handle_LAST_ACK(serverinfo_t *si, chisocketentry_t *entry,
 /*                                                           */
 /*     Any additional functions you need should go here      */
 /*                                                           */
+
