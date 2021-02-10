@@ -124,6 +124,13 @@ void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
 }
 
 /* P2a */
+void free_packet(tcp_packet_t *packet)
+{
+    /* Helper function to free packet */
+    chitcp_tcp_packet_free(packet);
+    free(packet);
+    return;
+}
 
 void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
 {
@@ -187,6 +194,7 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
             /* Send packet */
             chilog(DEBUG, "[SEND] send payload's length: %d", TCP_PAYLOAD_LEN(send_packet));
             chitcpd_send_tcp_packet(si, entry, send_packet);
+            free_packet(send_packet);
         }
     }
 }
@@ -242,6 +250,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             send_header->ack_seq = header->seq + 1;
             send_header->win = tcp_data->RCV_WND;
             chitcpd_send_tcp_packet(si, entry, send_packet);
+            free_packet(send_packet);
             chitcpd_update_tcp_state(si, entry, SYN_RCVD);
             return 0;
         }
@@ -275,6 +284,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
                 chitcpd_send_tcp_packet(si, entry, send_packet);
+                free_packet(send_packet);
                 chitcpd_update_tcp_state(si, entry, ESTABLISHED);
             }
             else
@@ -285,6 +295,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
                 chitcpd_send_tcp_packet(si, entry, send_packet);
+                free_packet(send_packet);
                 chitcpd_update_tcp_state(si, entry, SYN_RCVD);
             }
             return 0;
@@ -317,6 +328,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
                 chitcpd_send_tcp_packet(si, entry, send_packet);
+                free_packet(send_packet);
                 return 0;
             }
         }
@@ -340,6 +352,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
                 chitcpd_send_tcp_packet(si, entry, send_packet);
+                free_packet(send_packet);
                 return 0;
             }
         }
@@ -351,6 +364,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             send_header->ack_seq = tcp_data->RCV_NXT;
             send_header->win = tcp_data->RCV_WND;
             chitcpd_send_tcp_packet(si, entry, send_packet);
+            free_packet(send_packet);
             return 0;
         }
         else if ((RCV_WND > 0) && (SEG_LEN > 0))
@@ -375,6 +389,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
                 chitcpd_send_tcp_packet(si, entry, send_packet);
+                free_packet(send_packet);
                 return 0;
             }
         }
@@ -431,6 +446,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     send_header->ack_seq = tcp_data->RCV_NXT;
                     send_header->win = tcp_data->RCV_WND;
                     chitcpd_send_tcp_packet(si, entry, send_packet);
+                    free_packet(send_packet);
                 }
                 else 
                 {
@@ -482,6 +498,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     send_header->ack_seq = tcp_data->RCV_NXT;
                     send_header->win = tcp_data->RCV_WND;
                     chitcpd_send_tcp_packet(si, entry, send_packet);
+                    free_packet(send_packet);
                 }
                 /* Send ACK */
             }
@@ -505,6 +522,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                     send_header->ack_seq = tcp_data->RCV_NXT;
                     send_header->win = tcp_data->RCV_WND;
                     chitcpd_send_tcp_packet(si, entry, send_packet);
+                    free_packet(send_packet);
                     /* Transitions to next states in connection termination */
                     if ((tcp_state == SYN_RCVD) || (tcp_state == ESTABLISHED))
                     {
@@ -533,6 +551,10 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
             }
         }
     }
+    if (packet != NULL)
+    {
+        free_packet(packet);
+    }
 }
 
 int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, tcp_event_type_t event)
@@ -558,6 +580,7 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si, chisocketentry_t *entry, t
         header->ack_seq = 0;
         header->win = tcp_data->RCV_WND;
         chitcpd_send_tcp_packet(si, entry, packet);
+        free_packet(packet);
         chitcpd_update_tcp_state(si, entry, SYN_SENT);
     }
     else if (event == CLEANUP)
@@ -668,6 +691,7 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
         send_header->ack_seq = tcp_data->RCV_NXT;
         send_header->win = tcp_data->RCV_WND;
         chitcpd_send_tcp_packet(si, entry, send_packet);
+        free_packet(send_packet);
         tcp_data->SND_NXT += 1;
         chitcpd_update_tcp_state(si, entry, FIN_WAIT_1);
     }
@@ -777,6 +801,7 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
         send_header->ack_seq = tcp_data->RCV_NXT;
         send_header->win = tcp_data->RCV_WND;
         chitcpd_send_tcp_packet(si, entry, send_packet);
+        free_packet(send_packet);
         tcp_data->SND_NXT += 1;
         chitcpd_update_tcp_state(si, entry, LAST_ACK);
     }
