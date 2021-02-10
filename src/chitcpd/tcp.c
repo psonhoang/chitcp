@@ -209,8 +209,9 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
     if (tcp_data->pending_packets)
     {
         /* tcp_data->pending_packets points to the head node of the list */
+        pthread_mutex_lock(&tcp_data->lock_pending_packets);
         packet = tcp_data->pending_packets->packet;
-
+        pthread_mutex_unlock(&tcp_data->lock_pending_packets);
         /* This removes the list node at the head of the list */
         chitcp_packet_list_pop_head(&tcp_data->pending_packets);
     }
@@ -258,16 +259,19 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
     else if (tcp_state == SYN_SENT)
     {
         //chilog(DEBUG,"[LISTEN] IT COMES INSIDE SYN_SENT EVENT THE PACKET_ARRIVAL HANDLER FUNCTION");
-        if ((header->syn == 1) && (header->ack == 1))
+        if (header->ack == 1)
         {
             // if SYN message
             // send back ACK
-            // if (!((tcp_data->SND_UNA <= header->ack_seq) &&
-            //     (header->ack_seq <= tcp_data->SND_NXT)))
-            // {
-            //     // not acceptable
-            //     return 0;
-            // }
+            if (!((tcp_data->SND_UNA <= header->ack_seq) &&
+                (header->ack_seq <= tcp_data->SND_NXT)))
+            {
+                // not acceptable
+                return 0;
+            }
+        }
+        if (header->syn == 1)
+        {
             tcp_data->SND_UNA = header->ack_seq;
             tcp_data->SND_NXT = header->ack_seq;
             //chilog(DEBUG,"[LISTEN] SYN_SENT receives ack sequence to be is %d", header->ack_seq);
@@ -298,6 +302,10 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 free_packet(send_packet);
                 chitcpd_update_tcp_state(si, entry, SYN_RCVD);
             }
+            return 0;
+        }
+        else
+        {
             return 0;
         }
     }
