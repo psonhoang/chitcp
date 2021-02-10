@@ -127,6 +127,20 @@ void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
 
 /* HELPER FUNCTION */
 
+/* Generate random uint32_t */
+uint32_t random_uint32()
+{
+    /* This code is referred from a StackOverflow answer
+     * Source: See README
+     */
+    uint32_t x = rand() & 0xff;
+    x |= (rand() & 0xff) << 8;
+    x |= (rand() & 0xff) << 16;
+    x |= (rand() & 0xff) << 24;
+
+    return x;
+}
+
 /* This function frees a packet we create
  * or remove from the pending queue
  * Input: the packet we need to free
@@ -281,7 +295,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
         if (header->syn == 1)
         {
             /* Initialize ISS and set TCB variables accordingly */
-            uint32_t ISS = rand() * 100;
+            uint32_t ISS = random_uint32();
             tcp_data->ISS = ISS;
             tcp_data->SND_UNA = ISS;
             tcp_data->SND_NXT = ISS + 1;
@@ -646,7 +660,7 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si,
         chilog(DEBUG, "[CLOSED] APPLICATION_CONNECT");
         tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
         /* Setting ISS and update TCB variables accordingly */
-        uint32_t ISS = rand() * 100;
+        uint32_t ISS = random_uint32();
         tcp_data->ISS = ISS;
         tcp_data->SND_UNA = ISS;
         tcp_data->SND_NXT = ISS + 1;
