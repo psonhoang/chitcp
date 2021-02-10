@@ -470,7 +470,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si, chisocketentry_t *entry,
                 (tcp_state == FIN_WAIT_2))
             {
                 /* Copy to recv buffer and updates RCV_NXT */
-                if ((header->fin != 1) && (tcp_state == ESTABLISHED) && TCP_PAYLOAD_START(packet) > 0)
+                if ((header->fin != 1) && (tcp_state == ESTABLISHED) && TCP_PAYLOAD_LEN(packet) > 0)
                 {
                     int bytesWritten = circular_buffer_write(&tcp_data->recv, TCP_PAYLOAD_START(packet), TCP_PAYLOAD_LEN(packet), FALSE);
                     chilog(DEBUG, "[SEND] payload length: %d", TCP_PAYLOAD_LEN(packet));
@@ -653,12 +653,12 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si, chisocketentry_t *ent
         /* Mark the socket is closing */
         tcp_data->closing = true;
         /* Clear send buffer */
-        // while (circular_buffer_count(&tcp_data->send) != 0)
-        // {
-        //     chilog(DEBUG, "[ESTABLISHED] APPLICATION_CLOSE - stuck in send loop!");
-        //     // tcp_data is updated during these sends
-        //     chitcpd_process_send_buffer(si, entry);
-        // }
+        while (circular_buffer_count(&tcp_data->send) != 0)
+        {
+            chilog(DEBUG, "[ESTABLISHED] APPLICATION_CLOSE - stuck in send loop!");
+            // tcp_data is updated during these sends
+            chitcpd_process_send_buffer(si, entry);
+        }
         tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
         chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
         tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
@@ -762,11 +762,11 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si, chisocketentry_t *entr
     {
         /* Your code goes here */
         chilog(DEBUG, "[CLOSE_WAIT] APPLICATION_CLOSE");
-        // while (circular_buffer_count(&tcp_data->send) != 0)
-        // {
-        //     chilog(DEBUG, "[CLOSE_WAIT] stuck in send buffer loop!");
-        //     chitcpd_process_send_buffer(si, entry);
-        // }
+        while (circular_buffer_count(&tcp_data->send) != 0)
+        {
+            chilog(DEBUG, "[CLOSE_WAIT] stuck in send buffer loop!");
+            chitcpd_process_send_buffer(si, entry);
+        }
         tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
         tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
         chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
