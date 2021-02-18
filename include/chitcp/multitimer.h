@@ -70,6 +70,12 @@ typedef struct multi_timer multi_timer_t;
  * The callback function does not return anything. */
 typedef void (*mt_callback_func)(multi_timer_t*, single_timer_t*, void*);
 
+/* Arguments struct for multitimer thread */
+typedef struct worker_args
+{
+    multi_timer_t *mt;
+} worker_args_t;
+
 /* Represents a single timer. */
 typedef struct single_timer
 {
@@ -80,6 +86,9 @@ typedef struct single_timer
 
     /* Timer callback */
     mt_callback_func callback;
+
+    /* Timer callback args */
+    void *callback_args;
 
     /* Name of the timer.
      * This field is used *only* for debugging purposes,
@@ -93,6 +102,9 @@ typedef struct single_timer
 
     /* How many times has this timer timed out? */
     uint64_t num_timeouts;
+
+    /* Timeout spec */
+    struct timespec *timeout_spec;
 
     /* list of timers (utlist) */
     single_timer_t *prev;

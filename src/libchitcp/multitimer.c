@@ -41,11 +41,35 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <time.h>
 
 #include "chitcp/multitimer.h"
 #include "chitcp/log.h"
 
 
+void multitimer_thread(void *args)
+{
+    worker_args_t *wa;
+    wa = (worker_args_t *) args;
+    multi_timer_t *mt = wa->mt;
+    pthread_detach(pthread_self());
+    pthread_mutex_lock(&mt->lock);
+    while (true)
+    {
+        if(mt->num_active_timers == 0)
+        {
+            pthread_cond_wait(&mt->condwait, &mt->lock);
+        }
+        else
+        {
+            single_timer_t *head = mt->active_timers;
+            pthread_cond_timedwait(&mt->condwait, &mt->lock, 
+                                    head->timeout_spec);
+            head->callback(mt, head, head->callback_args);
+        }
+    }
+    pthread_mutex_unlock(&mt->lock);
+}
 
 /* See multitimer.h */
 int timespec_subtract(struct timespec *result, struct timespec *x, struct timespec *y)
@@ -80,12 +104,23 @@ int timespec_subtract(struct timespec *result, struct timespec *x, struct timesp
 int mt_init(multi_timer_t *mt, uint16_t num_timers)
 {
     /* Your code here */
+    /* Initialize multitimer */
     mt->timers = malloc(sizeof(single_timer_t *) * num_timers);
     mt->active_timers = NULL;
     mt->num_timers = num_timers;
     mt->num_active_timers = 0;
     pthread_mutex_init(&mt->lock, NULL);
     pthread_cond_init(&mt->condwait, NULL); // check error?
+    /* Initialize multitimer thread */
+    worker_args_t(*wa);
+    wa = calloc(1, sizeof(worker_args_t));
+    wa->mt = mt;
+    pthread_t worker_thread;
+    if(pthread_create(&worker_thread, NULL, multitimer_thread, wa) != 0)
+    {
+        mt_free(mt);
+        return CHITCP_ETHREAD;
+    }
 
     return CHITCP_OK;
 }
@@ -119,11 +154,49 @@ int mt_get_timer_by_id(multi_timer_t *mt, uint16_t id, single_timer_t **timer)
     return CHITCP_OK;
 }
 
+int timeoutcmp(single_timer_t *a, single_timer_t *b)
+{
+    /* Function to compare absolute timeouts of timers */
+    struct timespec result;
+    return timespec_subtract(&result, b->timeout_spec, a->timeout_spec);
+}
 
 /* See multitimer.h */
 int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, mt_callback_func callback, void* callback_args)
 {
     /* Your code here */
+    /* Checks if valid id */
+    if (id < 0 || id >= mt->num_timers)
+    {
+        return CHITCP_EINVAL;
+    }
+    /* Checks if timer is already active */
+    single_timer_t *elt;
+    DL_FOREACH(mt->active_timers, elt)
+    {
+        if(elt->id == id)
+        {
+            return CHITCP_EINVAL;
+        }
+    }
+    /* Update timer's timeout timespec */
+    single_timer_t *timer = mt->timers[id];
+    clock_gettime(CLOCK_REALTIME, timer->timeout_spec);
+    timer->timeout_spec->tv_nsec += timeout;
+    // Convert nanoseconds to milliseconds
+    long ms = round(timer->timeout_spec->tv_nsec / 1.0e6); 
+    if (ms > 999)
+    {
+        timer->timeout_spec->tv_sec++;
+    }
+    /* Timer's callback */
+    timer->callback = callback;
+    timer->callback_args = callback_args;
+    /* Set timer to active status and sort active timers list */
+    timer->active = true;
+    DL_APPEND(mt->active_timers, timer);
+    mt->num_active_timers++;
+    DL_SORT(mt->active_timers, timeoutcmp); // asks Borja about missing negative val in cmp function
 
     return CHITCP_OK;
 }
@@ -133,6 +206,33 @@ int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, mt_callback_f
 int mt_cancel_timer(multi_timer_t *mt, uint16_t id)
 {
     /* Your code here */
+    /* Checks if valid id */
+    if (id < 0 || id >= mt->num_timers)
+    {
+        return CHITCP_EINVAL;
+    }
+    /* Checks if timer is already active */
+    single_timer_t *elt;
+    bool is_active = false;
+    DL_FOREACH(mt->active_timers, elt)
+    {
+        if (elt->id == id)
+        {
+            is_active = true;
+            break;
+        }
+    }
+    if (!is_active)
+    {
+        return CHITCP_EINVAL;
+    }
+    /* Set timer to inactive status and update active timers list */
+    single_timer_t *timer = mt->timers[id];
+    timer->active = false;
+    mt->num_active_timers--;
+    DL_DELETE(mt->active_timers, timer);
+    /* Wake up thread */
+    pthread_cond_signal(&mt->condwait);
 
     return CHITCP_OK;
 }
