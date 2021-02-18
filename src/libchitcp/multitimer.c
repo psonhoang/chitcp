@@ -42,12 +42,12 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <time.h>
-
+#include <inttypes.h>
 #include "chitcp/multitimer.h"
 #include "chitcp/log.h"
 
 
-void multitimer_thread(void *args)
+void *multitimer_thread(void *args)
 {
     worker_args_t *wa;
     wa = (worker_args_t *) args;
@@ -109,6 +109,17 @@ int mt_init(multi_timer_t *mt, uint16_t num_timers)
     mt->active_timers = NULL;
     mt->num_timers = num_timers;
     mt->num_active_timers = 0;
+    for (int i = 0; i < num_timers; i++)
+    {
+        single_timer_t *timer = mt->timers[i];
+        timer->id = i;
+        timer->callback = NULL;
+        timer->callback_args = NULL;
+        sprintf(timer->name, "%d\r\n", i);
+        timer->active = false;
+        timer->num_timeouts = 0;
+        timer->timeout_spec = NULL;
+    }
     pthread_mutex_init(&mt->lock, NULL);
     pthread_cond_init(&mt->condwait, NULL); // check error?
     /* Initialize multitimer thread */
@@ -184,8 +195,8 @@ int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, mt_callback_f
     clock_gettime(CLOCK_REALTIME, timer->timeout_spec);
     timer->timeout_spec->tv_nsec += timeout;
     // Convert nanoseconds to milliseconds
-    long ms = round(timer->timeout_spec->tv_nsec / 1.0e6); 
-    if (ms > 999)
+    //long ms = round(timer->timeout_spec->tv_nsec / 1.0e6); 
+    if ((timer->timeout_spec->tv_nsec/MILLISECOND) > 999)
     {
         timer->timeout_spec->tv_sec++;
     }
