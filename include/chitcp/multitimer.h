@@ -46,6 +46,7 @@
 #include "chitcp/types.h"
 #include "chitcp/utlist.h"
 #include "chitcp/log.h"
+#include "chitcp/uthash.h"
 
 #define MAX_TIMER_NAME_LEN (16)
 #define SECOND      (1000000000L)
@@ -75,7 +76,7 @@ typedef struct single_timer
     /* DO NOT REMOVE OR RENAME ANY OF THESE FIELDS */
 
     /* Timer ID */
-    uint16_t id;
+    uint16_t id;    /* key for hash table */
 
     /* Name of the timer.
      * This field is used *only* for debugging purposes,
@@ -89,15 +90,25 @@ typedef struct single_timer
 
     /* How many times has this timer timed out? */
     uint64_t num_timeouts;
-} single_timer_t;
 
+    /* list of timers (utlist) */
+    single_timer_t *prev;
+    single_timer_t *next;
+} single_timer_t;
 
 /* A multitimer */
 typedef struct multi_timer
 {
     /* Add fields here */
-} multi_timer_t;
+    pthread_mutex_t lock;
+    pthread_cond_t condwait;
+    mt_callback_func callback;      // callback function for the f
+    single_timer_t **timers;
+    int num_timers;
+    single_timer_t *active_timers; // doubly linked-list of active timers
+    int num_active_timers;
 
+} multi_timer_t;
 
 /*
  * mt_init - Initializes the multitimer

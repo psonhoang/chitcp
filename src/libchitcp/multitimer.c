@@ -80,6 +80,13 @@ int timespec_subtract(struct timespec *result, struct timespec *x, struct timesp
 int mt_init(multi_timer_t *mt, uint16_t num_timers)
 {
     /* Your code here */
+    mt->timers = malloc(sizeof(single_timer_t *) * num_timers);
+    mt->active_timers = NULL;
+    mt->callback = NULL;
+    mt->num_timers = num_timers;
+    mt->num_active_timers = 0;
+    pthread_mutex_init(&mt->lock, NULL);
+    pthread_cond_init(&mt->condwait, NULL); // check error?
 
     return CHITCP_OK;
 }
@@ -89,6 +96,12 @@ int mt_init(multi_timer_t *mt, uint16_t num_timers)
 int mt_free(multi_timer_t *mt)
 {
     /* Your code here */
+    free(mt->timers); // free single_timers
+    free(mt->active_timers); // free individual timers
+    free(mt->callback);
+    pthread_mutex_destroy(&mt->lock);
+    pthread_cond_destroy(&mt->condwait);
+    free(mt);
 
     return CHITCP_OK;
 }
@@ -98,6 +111,12 @@ int mt_free(multi_timer_t *mt)
 int mt_get_timer_by_id(multi_timer_t *mt, uint16_t id, single_timer_t **timer)
 {
     /* Your code here */
+    if (id < 0 || id >= mt->num_timers)
+    {
+        return CHITCP_EINVAL;
+    }
+
+    *timer = mt->timers[id];
 
     return CHITCP_OK;
 }
