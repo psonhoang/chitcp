@@ -82,7 +82,6 @@ int mt_init(multi_timer_t *mt, uint16_t num_timers)
     /* Your code here */
     mt->timers = malloc(sizeof(single_timer_t *) * num_timers);
     mt->active_timers = NULL;
-    mt->callback = NULL;
     mt->num_timers = num_timers;
     mt->num_active_timers = 0;
     pthread_mutex_init(&mt->lock, NULL);
@@ -98,7 +97,6 @@ int mt_free(multi_timer_t *mt)
     /* Your code here */
     free(mt->timers); // free single_timers
     free(mt->active_timers); // free individual timers
-    free(mt->callback);
     pthread_mutex_destroy(&mt->lock);
     pthread_cond_destroy(&mt->condwait);
     free(mt);
@@ -144,6 +142,11 @@ int mt_cancel_timer(multi_timer_t *mt, uint16_t id)
 int mt_set_timer_name(multi_timer_t *mt, uint16_t id, const char *name)
 {
     /* Your code here */
+    if (id < 0 || id >= mt->num_timers)
+    {
+        return CHITCP_EINVAL;
+    }
+    strcpy(mt->timers[id]->name, name);
 
     return CHITCP_OK;
 }

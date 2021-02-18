@@ -76,7 +76,10 @@ typedef struct single_timer
     /* DO NOT REMOVE OR RENAME ANY OF THESE FIELDS */
 
     /* Timer ID */
-    uint16_t id;    /* key for hash table */
+    uint16_t id;
+
+    /* Timer callback */
+    mt_callback_func callback;
 
     /* Name of the timer.
      * This field is used *only* for debugging purposes,
@@ -102,7 +105,6 @@ typedef struct multi_timer
     /* Add fields here */
     pthread_mutex_t lock;
     pthread_cond_t condwait;
-    mt_callback_func callback;      // callback function for the f
     single_timer_t **timers;
     int num_timers;
     single_timer_t *active_timers; // doubly linked-list of active timers
