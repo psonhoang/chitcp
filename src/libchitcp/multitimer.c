@@ -115,10 +115,11 @@ int mt_init(multi_timer_t *mt, uint16_t num_timers)
         timer->id = i;
         timer->callback = NULL;
         timer->callback_args = NULL;
-        sprintf(timer->name, "%d\r\n", i);
+        // sprintf(timer->name, "%d\r\n", i);
         timer->active = false;
         timer->num_timeouts = 0;
-        timer->timeout_spec = NULL;
+        // timer->timeout_spec = NULL;
+        timer->timeout_spec = malloc(sizeof(struct timespec));
     }
     pthread_mutex_init(&mt->lock, NULL);
     pthread_cond_init(&mt->condwait, NULL); // check error?
@@ -136,13 +137,21 @@ int mt_init(multi_timer_t *mt, uint16_t num_timers)
     return CHITCP_OK;
 }
 
+void free_single_timer(single_timer_t *timer)
+{
+    free(timer->timeout_spec);
+}
 
 /* See multitimer.h */
 int mt_free(multi_timer_t *mt)
 {
     /* Your code here */
-    free(mt->timers); // free single_timers
-    free(mt->active_timers); // free individual timers
+    for (int i = 0; i < mt->num_timers; i++)
+    {
+        free_single_timer(mt->timers[i]);
+    }
+    free(mt->timers);
+    // free(mt->active_timers);
     pthread_mutex_destroy(&mt->lock);
     pthread_cond_destroy(&mt->condwait);
     free(mt);
