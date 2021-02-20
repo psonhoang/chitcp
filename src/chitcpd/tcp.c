@@ -108,12 +108,15 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
 
     /* Initialization of additional tcp_data_t fields,
      * and creation of retransmission thread, goes here */
+    int rc = mt_init(tcp_data->timers, 2);
+    tcp_data->queue = NULL;
 }
 
 void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
-
+    mt_free(tcp_data->timers);
+    free(tcp_data->timers);
     circular_buffer_free(&tcp_data->send);
     circular_buffer_free(&tcp_data->recv);
     chitcp_packet_list_destroy(&tcp_data->pending_packets);
@@ -252,6 +255,18 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
             free_packet(send_packet);
         }
     }
+}
+
+int chitcpd_tcp_handle_TIMEOUT_RTX(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
+{
+
+}
+
+int chitcpd_tcp_handle_TIMEOUT_PST(serverinfo_t *si, 
+                            chisocketentry_t *entry, tcp_event_type_t event)
+{
+    
 }
 
 /* Function to deal with PACKET_ARRIVAL event for all states 

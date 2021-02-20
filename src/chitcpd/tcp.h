@@ -116,6 +116,22 @@ static inline char *tcp_event_str (tcp_event_type_t evt)
 }
 
 
+typedef struct retransmission_queue
+{
+    tcp_packet_t *packet;
+    tcp_seq expected_ack_seq;
+    retransmission_queue_t *prev;
+    retransmission_queue_t *next;
+} retransmission_queue_t;
+
+typedef struct out_of_order_list
+{
+    tcp_packet_t *packet;
+    tcp_seq seq;
+    out_of_order_list_t *prev;
+    out_of_order_list_t *next;
+} out_of_order_list_t;
+
 /* TCP data. Roughly corresponds to the variables and buffers
  * one would expect in a Transmission Control Block (as
  * specified in RFC 793). */
@@ -145,6 +161,16 @@ typedef struct tcp_data
 
     /* Has a CLOSE been requested on this socket? */
     bool_t closing;
+
+    /* multitimer */
+    multi_timer_t *timers;
+
+    /* Retransmission queue */
+    retransmission_queue_t *queue;
+
+    /* Out-of-order list */
+    out_of_order_list_t *list;
+    
 } tcp_data_t;
 
 #endif /* TCP_H_ */

@@ -54,7 +54,6 @@ void *multitimer_thread(void *args)
     wa = (worker_args_t *) args;
     multi_timer_t *mt = wa->mt;
     int rc;
-    //chilog(DEBUG, "[MULTITIMER] MULTITIMER THREAD BEGINS\r\n");
     pthread_mutex_lock(&mt->lock);
     while (mt->active_thread)
     {
