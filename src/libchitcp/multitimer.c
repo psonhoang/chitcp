@@ -49,26 +49,43 @@
 
 void *multitimer_thread(void *args)
 {
+    chilog(INFO, "[MULTITIMER] MULTITIMER THREAD BEGINS\r\n");
     worker_args_t *wa;
     wa = (worker_args_t *) args;
     multi_timer_t *mt = wa->mt;
-    pthread_detach(pthread_self());
+    int rc;
+    //chilog(DEBUG, "[MULTITIMER] MULTITIMER THREAD BEGINS\r\n");
     pthread_mutex_lock(&mt->lock);
-    while (true)
+    while (mt->active_thread)
     {
         if(mt->num_active_timers == 0)
         {
+            chilog(INFO, "[MULTITIMER] I'M SLEEPING\r\n");
             pthread_cond_wait(&mt->condwait, &mt->lock);
         }
         else
         {
             single_timer_t *head = mt->active_timers;
-            pthread_cond_timedwait(&mt->condwait, &mt->lock, 
+            rc = pthread_cond_timedwait(&mt->condwait, &mt->lock, 
                                     head->timeout_spec);
-            head->callback(mt, head, head->callback_args);
+            if (rc == ETIMEDOUT)
+            {
+                chilog(DEBUG, "[MULTITIMER] TIME OUT!\r\n");
+                head->callback(mt, head, head->callback_args);
+                head->active = false;
+                head->num_timeouts++;
+                mt->num_active_timers--;
+                DL_DELETE(mt->active_timers, head);
+            }
+            else
+            {
+                chilog(DEBUG, "[MULTITIMER] WAKEN UP BUT NOT BECAUSE OF TIMEOUT!\r\n");
+            }
         }
     }
     pthread_mutex_unlock(&mt->lock);
+    chilog(DEBUG, "[MULTITIMER] MULTITIMER THREAD ENDS\r\n");
+    pthread_exit(NULL);
 }
 
 /* See multitimer.h */
@@ -105,31 +122,35 @@ int mt_init(multi_timer_t *mt, uint16_t num_timers)
 {
     /* Your code here */
     /* Initialize multitimer */
+    chilog(INFO, "[MULTITIMER] INITIALIZE TIMER\r\n");
     mt->timers = malloc(sizeof(single_timer_t *) * num_timers);
+    mt->active_thread = true;
     mt->active_timers = NULL;
     mt->num_timers = num_timers;
     mt->num_active_timers = 0;
     for (int i = 0; i < num_timers; i++)
     {
+        //chilog(INFO, "[MULTITIMER] INITIALIZE TIMER %d\r\n", i);
+        mt->timers[i] = malloc(sizeof (single_timer_t));
         single_timer_t *timer = mt->timers[i];
         timer->id = i;
         timer->callback = NULL;
         timer->callback_args = NULL;
-        // sprintf(timer->name, "%d\r\n", i);
         timer->active = false;
         timer->num_timeouts = 0;
-        // timer->timeout_spec = NULL;
         timer->timeout_spec = malloc(sizeof(struct timespec));
+        //chilog(INFO, "[MULTITIMER] FINISH INITIALIZING TIMER %d\r\n", i);
     }
+    //chilog(INFO, "[MULTITIMER] INITIALIZE SINGLE TIMERS\r\n");
     pthread_mutex_init(&mt->lock, NULL);
     pthread_cond_init(&mt->condwait, NULL); // check error?
     /* Initialize multitimer thread */
     worker_args_t(*wa);
     wa = calloc(1, sizeof(worker_args_t));
     wa->mt = mt;
-    pthread_t worker_thread;
-    if(pthread_create(&worker_thread, NULL, multitimer_thread, wa) != 0)
+    if (pthread_create(&mt->multimer_thread, NULL, multitimer_thread, wa) != 0)
     {
+        chilog(INFO, "[MULTITIMER] THREAD COULDN'T BE CREATED\r\n");
         mt_free(mt);
         return CHITCP_ETHREAD;
     }
@@ -146,16 +167,24 @@ void free_single_timer(single_timer_t *timer)
 int mt_free(multi_timer_t *mt)
 {
     /* Your code here */
+    chilog(INFO, "[MULTITIMER] FREE TIMER BEGINS\r\n");
+    pthread_mutex_lock(&mt->lock);
+    mt->active_thread = false;
+    pthread_cond_signal(&mt->condwait);
+    pthread_mutex_unlock(&mt->lock);
+
     for (int i = 0; i < mt->num_timers; i++)
     {
         free_single_timer(mt->timers[i]);
     }
     free(mt->timers);
-    // free(mt->active_timers);
+    free(mt->active_timers);
+    pthread_join(mt->multimer_thread, NULL);
     pthread_mutex_destroy(&mt->lock);
     pthread_cond_destroy(&mt->condwait);
-    free(mt);
-
+    // free(mt);
+    // chilog(INFO, "[MULTITIMER] FREE MULTIMER STRUCT WORKS\r\n");
+    chilog(DEBUG, "[MULTITIMER] MAIN THREAD ENDS\r\n");
     return CHITCP_OK;
 }
 
@@ -177,8 +206,31 @@ int mt_get_timer_by_id(multi_timer_t *mt, uint16_t id, single_timer_t **timer)
 int timeoutcmp(single_timer_t *a, single_timer_t *b)
 {
     /* Function to compare absolute timeouts of timers */
-    struct timespec result;
-    return timespec_subtract(&result, b->timeout_spec, a->timeout_spec);
+    struct timespec *first_item = a->timeout_spec;
+    struct timespec *second_item = b->timeout_spec;
+    if (first_item->tv_sec > second_item->tv_sec)
+    {
+        return 1;
+    }
+    else if (first_item->tv_sec < second_item->tv_sec)
+    {
+        return -1;
+    }
+    else
+    {
+        if (first_item->tv_nsec > second_item->tv_nsec)
+        {
+            return 1;
+        }
+        else if (first_item->tv_nsec < second_item->tv_nsec)
+        {
+            return -1;
+        }
+        else 
+        {
+            return 0;
+        }
+    }
 }
 
 /* See multitimer.h */
@@ -216,7 +268,10 @@ int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, mt_callback_f
     timer->active = true;
     DL_APPEND(mt->active_timers, timer);
     mt->num_active_timers++;
-    DL_SORT(mt->active_timers, timeoutcmp); // asks Borja about missing negative val in cmp function
+    DL_SORT(mt->active_timers, timeoutcmp);
+    pthread_mutex_lock(&mt->lock);
+    pthread_cond_signal(&mt->condwait);
+    pthread_mutex_unlock(&mt->lock);
 
     return CHITCP_OK;
 }
@@ -252,8 +307,9 @@ int mt_cancel_timer(multi_timer_t *mt, uint16_t id)
     mt->num_active_timers--;
     DL_DELETE(mt->active_timers, timer);
     /* Wake up thread */
+    pthread_mutex_lock(&mt->lock);
     pthread_cond_signal(&mt->condwait);
-
+    pthread_mutex_unlock(&mt->lock);
     return CHITCP_OK;
 }
 
