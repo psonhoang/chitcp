@@ -258,12 +258,16 @@ int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, mt_callback_f
     single_timer_t *timer = mt->timers[id];
     clock_gettime(CLOCK_REALTIME, timer->timeout_spec);
     timer->timeout_spec->tv_nsec += timeout;
-    // Convert nanoseconds to milliseconds
-    //long ms = round(timer->timeout_spec->tv_nsec / 1.0e6); 
-    if ((timer->timeout_spec->tv_nsec/MILLISECOND) > 999)
+    while (timer->timeout_spec->tv_nsec > 1.0e9)
     {
+        // Normalizing timespec
+        timer->timeout_spec->tv_nsec -= 1.0e9;
         timer->timeout_spec->tv_sec++;
     }
+    // if (timer->timeout_spec->tv_nsec > 1.0e9)
+    // {
+    //     chilog(DEBUG, "INVALID NANOSEC!!!");
+    // }
     /* Timer's callback */
     timer->callback = callback;
     timer->callback_args = callback_args;
