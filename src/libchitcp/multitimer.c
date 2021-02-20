@@ -71,7 +71,10 @@ void *multitimer_thread(void *args)
             if (rc == ETIMEDOUT)
             {
                 chilog(DEBUG, "[MULTITIMER] TIME OUT!\r\n");
-                head->callback(mt, head, head->callback_args);
+                if (head->callback != NULL)
+                {
+                    head->callback(mt, head, head->callback_args);
+                }
                 head->active = false;
                 head->num_timeouts++;
                 mt->num_active_timers--;
