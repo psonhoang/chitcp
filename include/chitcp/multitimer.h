@@ -76,6 +76,13 @@ typedef struct worker_args
     multi_timer_t *mt;
 } worker_args_t;
 
+typedef struct callback_args
+{
+    multi_timer_t *multi_timer; 
+    single_timer_t *single_timer; 
+    void *tcp_param;
+} callback_args_t;
+
 /* Represents a single timer. */
 typedef struct single_timer
 {

@@ -98,6 +98,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+void callback_func(multi_timer_t* multi_timer, single_timer_t* single_timer, 
+                                                            void *tcp_param)
+{
+    callback_void_param_t *void_params;
+    void_params = (callback_void_param_t *) tcp_param; 
+    chitcpd_timeout(void_params->si, void_params->entry, void_params->timer_type);
+}
+
 void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
@@ -108,15 +116,42 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
 
     /* Initialization of additional tcp_data_t fields,
      * and creation of retransmission thread, goes here */
-    int rc = mt_init(tcp_data->timers, 2);
+    tcp_data->tcp_timer = malloc(sizeof (multi_timer_t));
+    int rc = mt_init(tcp_data->tcp_timer, 2);
+    single_timer_t *timer;
+    callback_void_param_t *void_param = malloc(sizeof (callback_void_param_t));
+    void_param->si = si;
+    void_param->entry = entry;
+    callback_args_t *callback_args = malloc(sizeof (callback_args_t));
+    callback_args->multi_timer = tcp_data->tcp_timer;
+    for (int i = 0; i < tcp_data->tcp_timer->num_timers; i++)
+    {
+        timer = tcp_data->tcp_timer->timers[i];
+        timer->callback = callback_func;
+        if (i == 0) {
+            void_param->timer_type = RETRANSMISSION;
+        }
+        else 
+        {
+            void_param->timer_type = PERSIST;
+        }
+        callback_args->single_timer = timer;
+        callback_args->tcp_param = void_param;
+        timer->callback_args = (void *) callback_args;
+    }
     tcp_data->queue = NULL;
+    tcp_data->list = NULL;
+    tcp_data->RTO = MIN_RTO;
+    tcp_data->rtms_timer_on = false;
 }
 
 void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
-    mt_free(tcp_data->timers);
-    free(tcp_data->timers);
+    mt_free(tcp_data->tcp_timer);
+    free(tcp_data->tcp_timer);
+    //free(tcp_data->queue); //TODO
+    //free(tcp_data->list ); //TODO
     circular_buffer_free(&tcp_data->send);
     circular_buffer_free(&tcp_data->recv);
     chitcp_packet_list_destroy(&tcp_data->pending_packets);
@@ -158,6 +193,33 @@ void free_packet(tcp_packet_t *packet)
     return;
 }
 
+struct timespec *set_timer(serverinfo_t *si, chisocketentry_t *entry, 
+                            uint64_t timeout, tcp_timer_type_t timer_type)
+{
+    tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+    retransmission_queue_t *queue = tcp_data->queue;
+    if ((!tcp_data->rtms_timer_on) && (queue != NULL)) //// check if send buffer is empty
+    {
+        tcp_data->rtms_timer_on = true;
+        single_timer_t *timer = tcp_data->tcp_timer->timers[timer_type];
+        mt_set_timer(tcp_data->tcp_timer, timer_type, tcp_data->RTO, 
+                            timer->callback, timer->callback_args); 
+        return timer->timeout_spec;
+    }
+    else
+    {
+        struct timespec *result = malloc(sizeof (struct timespec));
+        clock_gettime(CLOCK_REALTIME, result);
+        result->tv_nsec += timeout;
+        while (result->tv_nsec > 1.0e9)
+        {
+            // Normalizing timespec
+            result->tv_nsec -= 1.0e9;
+            result->tv_sec++;
+        }
+        return result;
+    }
+}
 /* This function looks at the current state
  * of the Transmission Control Block and
  * send over as much data remaining in
@@ -266,7 +328,7 @@ int chitcpd_tcp_handle_TIMEOUT_RTX(serverinfo_t *si,
 int chitcpd_tcp_handle_TIMEOUT_PST(serverinfo_t *si, 
                             chisocketentry_t *entry, tcp_event_type_t event)
 {
-    
+
 }
 
 /* Function to deal with PACKET_ARRIVAL event for all states 
@@ -329,6 +391,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
             send_header->ack_seq = header->seq + 1;
             send_header->win = tcp_data->RCV_WND;
             chitcpd_send_tcp_packet(si, entry, send_packet);
+            clock_gettime(CLOCK_REALTIME, tcp_data->begin);
             free_packet(send_packet);
             /* Transition to SYN_RCVD */
             chitcpd_update_tcp_state(si, entry, SYN_RCVD);
@@ -358,6 +421,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
             if (tcp_data->SND_UNA > tcp_data->ISS)
             {
                 // If our SYN has been acknowledged
+                clock_gettime(CLOCK_REALTIME, tcp_data->end);
                 send_header->ack = 1;
                 send_header->syn = 0;
                 send_header->fin = 0;
@@ -694,6 +758,7 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si,
         header->ack_seq = 0;
         header->win = tcp_data->RCV_WND;
         chitcpd_send_tcp_packet(si, entry, packet);
+        clock_gettime(CLOCK_REALTIME, tcp_data->begin);
         free_packet(packet);
         /* Transition to SYN_SENT */
         chitcpd_update_tcp_state(si, entry, SYN_SENT);

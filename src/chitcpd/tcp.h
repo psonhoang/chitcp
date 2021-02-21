@@ -48,6 +48,8 @@
 
 #define TCP_BUFFER_SIZE (4096)
 #define TCP_MSS (536)
+#define CLOCK_GRANULARITY (50000000L)
+#define MIN_RTO (200000000L)
 
 /* TCP events. Roughly correspond to the ones specified in
  * http://tools.ietf.org/html/rfc793#section-3.9 */
@@ -115,11 +117,19 @@ static inline char *tcp_event_str (tcp_event_type_t evt)
     return tcp_event_type_names[evt-1];
 }
 
+typedef struct callback_void_param
+{
+    serverinfo_t *si;
+    chisocketentry_t *entry;
+    tcp_timer_type_t timer_type;
+} callback_void_param_t;
 
 typedef struct retransmission_queue
 {
     tcp_packet_t *packet;
     tcp_seq expected_ack_seq;
+    struct timespec *timeout_spec;
+    /* double linked list */
     retransmission_queue_t *prev;
     retransmission_queue_t *next;
 } retransmission_queue_t;
@@ -163,14 +173,19 @@ typedef struct tcp_data
     bool_t closing;
 
     /* multitimer */
-    multi_timer_t *timers;
+    multi_timer_t *tcp_timer;
 
     /* Retransmission queue */
     retransmission_queue_t *queue;
 
     /* Out-of-order list */
     out_of_order_list_t *list;
-    
+
+    /* Retransmission Timeout */
+    uint64_t RTO;
+    uint64_t SRTT;
+    uint64_t RTTVAR;
+    bool_t rtms_timer_on;
 } tcp_data_t;
 
 #endif /* TCP_H_ */
