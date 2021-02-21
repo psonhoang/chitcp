@@ -90,6 +90,20 @@ void *multitimer_thread(void *args)
     pthread_exit(NULL);
 }
 
+struct timespec *count_timeout_spec(uint64_t timeout)
+{
+    struct timespec *result = malloc(sizeof (struct timespec));
+    clock_gettime(CLOCK_REALTIME, result);
+    result->tv_nsec += timeout;
+    while (result->tv_nsec > 1.0e9)
+    {
+            // Normalizing timespec
+        result->tv_nsec -= 1.0e9;
+        result->tv_sec++;
+    }
+    return result;
+}
+
 /* See multitimer.h */
 int timespec_subtract(struct timespec *result, struct timespec *x, struct timespec *y)
 {
@@ -255,18 +269,15 @@ int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, mt_callback_f
     }
     /* Update timer's timeout timespec */
     single_timer_t *timer = mt->timers[id];
-    clock_gettime(CLOCK_REALTIME, timer->timeout_spec);
-    timer->timeout_spec->tv_nsec += timeout;
-    while (timer->timeout_spec->tv_nsec > 1.0e9)
-    {
-        // Normalizing timespec
-        timer->timeout_spec->tv_nsec -= 1.0e9;
-        timer->timeout_spec->tv_sec++;
-    }
-    // if (timer->timeout_spec->tv_nsec > 1.0e9)
+    // clock_gettime(CLOCK_REALTIME, timer->timeout_spec);
+    // timer->timeout_spec->tv_nsec += timeout;
+    // while (timer->timeout_spec->tv_nsec > 1.0e9)
     // {
-    //     chilog(DEBUG, "INVALID NANOSEC!!!");
+    //     // Normalizing timespec
+    //     timer->timeout_spec->tv_nsec -= 1.0e9;
+    //     timer->timeout_spec->tv_sec++;
     // }
+    timer->timeout_spec = count_timeout_spec(timeout);
     /* Timer's callback */
     timer->callback = callback;
     timer->callback_args = callback_args;

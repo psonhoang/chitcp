@@ -117,12 +117,9 @@ static inline char *tcp_event_str (tcp_event_type_t evt)
     return tcp_event_type_names[evt-1];
 }
 
-typedef struct callback_void_param
-{
-    serverinfo_t *si;
-    chisocketentry_t *entry;
-    tcp_timer_type_t timer_type;
-} callback_void_param_t;
+/* Forward declarations */
+typedef struct retransmission_queue retransmission_queue_t;
+typedef struct out_of_order_list out_of_order_list_t;
 
 typedef struct retransmission_queue
 {

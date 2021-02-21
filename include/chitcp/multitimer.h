@@ -76,7 +76,7 @@ typedef struct worker_args
     multi_timer_t *mt;
 } worker_args_t;
 
-typedef struct callback_args
+typedef struct callback_arg
 {
     multi_timer_t *multi_timer; 
     single_timer_t *single_timer; 
@@ -132,6 +132,8 @@ typedef struct multi_timer
     int num_active_timers;
 
 } multi_timer_t;
+
+struct timespec *count_timeout_spec(uint64_t timeout);
 
 /*
  * mt_init - Initializes the multitimer
