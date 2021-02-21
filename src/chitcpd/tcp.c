@@ -363,7 +363,25 @@ int chitcpd_tcp_handle_TIMEOUT_RTX(serverinfo_t *si,
 int chitcpd_tcp_handle_TIMEOUT_PST(serverinfo_t *si, 
                             chisocketentry_t *entry, tcp_event_type_t event)
 {
-
+    tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+    tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
+    uint8_t payload[] = {1};    // 1 byte probe
+    chitcpd_tcp_packet_create(entry, send_packet, payload, 1);
+    tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
+    /* Update TCP variables and send header */
+    send_header->ack = 1;
+    send_header->syn = 0;
+    send_header->fin = 0;
+    send_header->ack_seq = tcp_data->RCV_NXT;
+    // Probe segment: SEG.SEQ = SND.UNA - 1 => segment is out of window
+    send_header->seq = tcp_data->SND_UNA - 1;
+    send_header->win = tcp_data->RCV_WND;
+    /* Send probe packet */
+    chitcpd_send_tcp_packet(si, entry, send_packet);
+    free_packet(send_packet);
+    
+    /* Set PST timer */
+    set_timer(si, entry, tcp_data->RTO, PERSIST);
 }
 
 /* Function to deal with PACKET_ARRIVAL event for all states 
@@ -637,7 +655,19 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
             else
             {
                 chilog(DEBUG,"[LISTEN] IT COMES OTHER EVENTS IN THE PACKET_ARRIVAL HANDLER FUNCTION");
-                if ((tcp_data->SND_UNA <= header->ack_seq) &&
+                if (tcp_data->SND_WND == 0)
+                {
+                    // Receives ACk after probe segment
+                    if (header->win > 0)
+                    {
+                        mt_cancel_timer(tcp_data->tcp_timer, 1);
+                        chitcpd_process_send_buffer(si, entry);
+                        return 0;
+                    }
+
+                    return 0;
+                }
+                else if ((tcp_data->SND_UNA <= header->ack_seq) &&
                     (header->ack_seq <= tcp_data->SND_NXT))
                 {
                     remove_from_queue(si, entry, header->ack_seq);
