@@ -657,14 +657,25 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                 chilog(DEBUG,"[LISTEN] IT COMES OTHER EVENTS IN THE PACKET_ARRIVAL HANDLER FUNCTION");
                 if (tcp_data->SND_WND == 0)
                 {
-                    // Receives ACk after probe segment
+                    /* Receives ACk after probe segment (probing) */
+                    chilog(DEBUG, "[LISTEN] RECEIVES ACK WHEN PROBING...");
                     if (header->win > 0)
                     {
+                        // If window is updated
+                        tcp_data->SND_WND = header->win;
+                        // Cancel persist timer
                         mt_cancel_timer(tcp_data->tcp_timer, 1);
                         chitcpd_process_send_buffer(si, entry);
-                        return 0;
                     }
 
+                    return 0;
+                }
+                else if (header->win == 0)
+                {
+                    /* Advertised window is 0 */
+                    tcp_data->SND_WND = 0;
+                    // Starts persist timer
+                    set_timer(si, entry, tcp_data->RTO, PERSIST);
                     return 0;
                 }
                 else if ((tcp_data->SND_UNA <= header->ack_seq) &&
