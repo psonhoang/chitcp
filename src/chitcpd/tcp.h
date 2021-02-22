@@ -48,8 +48,10 @@
 
 #define TCP_BUFFER_SIZE (4096)
 #define TCP_MSS (536)
-#define CLOCK_GRANULARITY (50000000L)
+#define CLOCK_G (50000000L)
 #define MIN_RTO (200000000L)
+#define BETA (1/4)
+#define ALPHA (1/8)
 
 /* TCP events. Roughly correspond to the ones specified in
  * http://tools.ietf.org/html/rfc793#section-3.9 */
@@ -125,7 +127,9 @@ typedef struct retransmission_queue
 {
     tcp_packet_t *packet;
     tcp_seq expected_ack_seq;
-    struct timespec *timeout_spec;
+    //struct timespec *timeout_spec;
+    struct timespec *send_start;
+    bool_t retransmitted;
     /* double linked list */
     retransmission_queue_t *prev;
     retransmission_queue_t *next;
@@ -166,6 +170,9 @@ typedef struct tcp_data
     circular_buffer_t send;
     circular_buffer_t recv;
 
+    /* Number of bytes sent but unacknowledged in send buffer */
+    int unack_bytes;
+
     /* Has a CLOSE been requested on this socket? */
     bool_t closing;
 
@@ -178,7 +185,9 @@ typedef struct tcp_data
     /* Out-of-order list */
     out_of_order_list_t *list;
 
-    /* Retransmission Timeout */
+    /* RTT retransmission */
+    bool_t first_RTT;
+    uint64_t RTT;
     uint64_t RTO;
     uint64_t SRTT;
     uint64_t RTTVAR;
