@@ -150,8 +150,6 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
     tcp_data->list = NULL;
     tcp_data->RTO = MIN_RTO;
     tcp_data->rtms_timer_on = false;
-    tcp_data->start = malloc(sizeof (struct timespec));
-    tcp_data->end = malloc(sizeof (struct timespec));
     tcp_data->first_RTT = false;
     tcp_data->unack_bytes = 0;
 }
@@ -306,6 +304,7 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
     {
         if (elt->expected_ack_seq <= ack_seq) {
             calculate_RTO(si, entry, elt->send_start, elt->retransmitted);
+            tcp_data->unack_bytes -= TCP_PAYLOAD_LEN(elt->packet);
             free_packet(elt->packet);
             DL_DELETE(tcp_data->queue, elt);
             free(elt);
@@ -346,9 +345,8 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
 {
     /* This function aims to empty send buffer */
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
-    int unack_bytes = tcp_data->unack_bytes;
     /* bytes_in_send is the total bytes currently in the send buffer that needs to be sent */
-    int bytes_in_send = circular_buffer_count(&tcp_data->send) - unack_bytes;
+    int bytes_in_send = circular_buffer_count(&tcp_data->send) - tcp_data->unack_bytes;
     chilog(DEBUG, "[SEND] TOTAL BYTE IN SEND BUFFER IS %d", bytes_in_send);
     if (bytes_in_send == 0) 
     {
@@ -403,8 +401,8 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
         }
         chilog(DEBUG, "[SEND] TOTAL PAYLOAD LEN IS %d", payload_len);
         uint8_t payload[payload_len];
-        bytes_read = circular_buffer_peek(&tcp_data->send, payload, 
-                                                payload_len, FALSE);
+        bytes_read = circular_buffer_peek_at(&tcp_data->send, payload, 
+                                                tcp_data->unack_bytes, payload_len);
         chilog(DEBUG, "[SEND] TOTAL BYTES PEEKED FROM SENT BUFFER IS %d", 
                                                             bytes_read);
         chilog(DEBUG, "DATA REMAINING IN BUFFER IS %d", 
@@ -412,7 +410,7 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
         if (bytes_read > 0) {
             // update num of bytes left we need to send
             total_send_bytes -= bytes_read;
-            tcp_data->unack_bytes+= bytes_read;
+            tcp_data->unack_bytes += bytes_read;
             /* Create send packet */
             chitcpd_tcp_packet_create(entry, send_packet, 
                                                     payload, payload_len);
@@ -585,6 +583,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                 add_to_queue(si, entry, send_header->seq, send_packet);          
                 // Transition to ESTABLISHED
                 chitcpd_update_tcp_state(si, entry, ESTABLISHED);
+                chitcpd_process_send_buffer(si, entry);
             }
             else
             {
@@ -734,6 +733,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                     tcp_data->SND_NXT = header->ack_seq;
                     tcp_data->SND_WND = header->win;
                     chitcpd_update_tcp_state(si, entry, ESTABLISHED);
+                    chitcpd_process_send_buffer(si, entry); /*ADDED */
                     return 0;
                 }
             }
@@ -749,7 +749,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                         // If window is updated
                         tcp_data->SND_WND = header->win;
                         // Cancel persist timer
-                        mt_cancel_timer(tcp_data->tcp_timer, 1);
+                        mt_cancel_timer(tcp_data->tcp_timer, PERSIST);
                         chitcpd_process_send_buffer(si, entry);
                     }
 
