@@ -325,7 +325,7 @@ void add_to_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq seq_num, tc
     retransmission_queue_t *item = malloc(sizeof (retransmission_queue_t));
     item->packet = packet;
     //item->timeout_spec = count_timeout_spec(tcp_data->RTO);
-    item->send_start = clockgettime(CLOCK_REALITIME, item->send_start);
+    clock_gettime(CLOCK_REALTIME, item->send_start);
     item->retransmitted = false;
     item->expected_ack_seq = TCP_PAYLOAD_LEN(packet) + seq_num + 1;
     DL_APPEND(tcp_data->queue, item);
@@ -441,7 +441,7 @@ int chitcpd_tcp_handle_TIMEOUT_RTX(serverinfo_t *si,
     retransmission_queue_t *elt;
     DL_FOREACH(tcp_data->queue, elt)
     {
-        elt->send_start = clock_gettime(CLOCK_REALTIME, elt->send_start);
+        clock_gettime(CLOCK_REALTIME, elt->send_start);
         elt->retransmitted = true;
         chitcpd_send_tcp_packet(si, entry, elt->packet);
     }
