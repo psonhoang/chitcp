@@ -244,13 +244,13 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
             tcp_data->RTO = RTO;
         }
         tcp_data->first_RTT = false;
-        chilog(DEBUG, "[RTO CALCULATION] RTO TIME IS %lf", tcp_data->RTO);
+        chilog(DEBUG, "[RTO CALCULATION] RTO TIME IS %i", tcp_data->RTO);
         return;
     }
     else 
     {
-        tcp_data->RTTVAR = (1 - BETA) * tcp_data->RTTVAR + BETA * abs(tcp_data->SRTT - tcp_data->RTT);
-        tcp_data->SRTT = (1 - ALPHA) * tcp_data->SRTT + ALPHA * tcp_data->RTT;
+        tcp_data->RTTVAR = (tcp_data->RTTVAR / 4 * 3) + abs(tcp_data->SRTT - tcp_data->RTT) /4;
+        tcp_data->SRTT = (7 * tcp_data->SRTT / 8) + tcp_data->RTT/8;
         tcp_data->RTO = tcp_data->SRTT + max_var(CLOCK_G, 4 * tcp_data->RTTVAR);
         if (RTO < MIN_RTO)
         {
@@ -260,7 +260,7 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
         {
             tcp_data->RTO = RTO;
         }
-        chilog(DEBUG, "[RTO CALCULATION] RTO TIME IS %lf", tcp_data->RTO);
+        chilog(DEBUG, "[RTO CALCULATION] RTO TIME IS %i", tcp_data->RTO);
         return;
     }
 }
