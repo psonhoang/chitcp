@@ -165,7 +165,7 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
     }
     tcp_data->queue = NULL;
     tcp_data->list = NULL;
-    tcp_data->RTO = MIN_RTO;
+    tcp_data->RTO = SECOND;
     tcp_data->rtms_timer_on = false;
     tcp_data->first_RTT = false;
     tcp_data->unack_bytes = 0;
@@ -227,9 +227,9 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
     struct timespec *result = malloc (sizeof (struct timespec));
     struct timespec *end_time = malloc (sizeof (struct timespec));
     clock_gettime(CLOCK_REALTIME, end_time);
-    timespec_subtract(result, start_time, end_time);
+    timespec_subtract(result, end_time, start_time);
     tcp_data->RTT = result->tv_sec * SECOND + result->tv_nsec;
-    double RTO;
+    uint64_t RTO;
     if (tcp_data->first_RTT)
     {
         tcp_data->SRTT = tcp_data->RTT;
@@ -309,7 +309,7 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
         if ((!tcp_data->rtms_timer_on) && (queue != NULL)) // check if send buffer is empty
         {
             chilog(DEBUG, "[SET_TIMER] NEW TIMER SET");
-            chilog(DEBUG, "[SET_TIMER] RTO TIME IS %lf", tcp_data->RTO);
+            chilog(DEBUG, "[SET_TIMER] RTO TIME IS %i", tcp_data->RTO);
             tcp_data->rtms_timer_on = true;
             mt_set_timer(tcp_data->tcp_timer, timer_type, timeout, 
                             timer->callback, timer->callback_args);
@@ -610,7 +610,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
         if (header->syn == 1)
         {
             /* Initialize ISS and set TCB variables accordingly */
-            uint32_t ISS = random_uint32();
+            uint32_t ISS = (rand() % 256) * 1000000;
             tcp_data->ISS = ISS;
             tcp_data->SND_UNA = ISS;
             tcp_data->SND_NXT = ISS + 1;
@@ -1036,7 +1036,7 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si,
         chilog(DEBUG, "[CLOSED] APPLICATION_CONNECT");
         tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
         /* Setting ISS and update TCB variables accordingly */
-        uint32_t ISS = random_uint32();
+        uint32_t ISS = (rand() % 256) * 1000000;
         tcp_data->ISS = ISS;
         tcp_data->SND_UNA = ISS;
         tcp_data->SND_NXT = ISS + 1;

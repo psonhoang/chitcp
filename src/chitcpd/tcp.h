@@ -192,10 +192,10 @@ typedef struct tcp_data
 
     /* RTT retransmission */
     bool_t first_RTT;
-    double RTT;
-    double RTO;
-    double SRTT;
-    double RTTVAR;
+    uint64_t RTT;
+    uint64_t RTO;
+    uint64_t SRTT;
+    uint64_t RTTVAR;
     bool_t rtms_timer_on;
 } tcp_data_t;
 
