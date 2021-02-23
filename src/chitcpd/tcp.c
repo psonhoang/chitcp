@@ -1067,6 +1067,7 @@ int chitcpd_tcp_state_handle_SYN_RCVD(serverinfo_t *si,
     else if (event == TIMEOUT_RTX)
     {
         /* Your code goes here */
+        chitcpd_tcp_handle_TIMEOUT_RTX(si, entry);
     }
     else
         chilog(WARNING, "In SYN_RCVD state, received unexpected event.");
@@ -1085,6 +1086,7 @@ int chitcpd_tcp_state_handle_SYN_SENT(serverinfo_t *si,
     else if (event == TIMEOUT_RTX)
     {
         /* Your code goes here */
+        chitcpd_tcp_handle_TIMEOUT_RTX(si, entry);
     }
     else
         chilog(WARNING, "In SYN_SENT state, received unexpected event.");
@@ -1128,6 +1130,7 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si,
     else if (event == TIMEOUT_RTX)
     {
         /* Your code goes here */
+        chitcpd_tcp_handle_TIMEOUT_RTX(si, entry);
     }
     else if (event == TIMEOUT_PST)
     {
@@ -1159,6 +1162,7 @@ int chitcpd_tcp_state_handle_FIN_WAIT_1(serverinfo_t *si,
     else if (event == TIMEOUT_RTX)
     {
         /* Your code goes here */
+        chitcpd_tcp_handle_TIMEOUT_RTX(si, entry);
     }
     else if (event == TIMEOUT_PST)
     {
@@ -1190,6 +1194,7 @@ int chitcpd_tcp_state_handle_FIN_WAIT_2(serverinfo_t *si,
     else if (event == TIMEOUT_RTX)
     {
         /* Your code goes here */
+        chitcpd_tcp_handle_TIMEOUT_RTX(si, entry);
     }
     else
         chilog(WARNING, "In FIN_WAIT_2 state, received unexpected event (%i).", event);
@@ -1242,6 +1247,7 @@ int chitcpd_tcp_state_handle_CLOSE_WAIT(serverinfo_t *si,
     else if (event == TIMEOUT_RTX)
     {
         /* Your code goes here */
+        chitcpd_tcp_handle_TIMEOUT_RTX(si, entry);
     }
     else if (event == TIMEOUT_PST)
     {
@@ -1265,6 +1271,7 @@ int chitcpd_tcp_state_handle_CLOSING(serverinfo_t *si,
     else if (event == TIMEOUT_RTX)
     {
         /* Your code goes here */
+        chitcpd_tcp_handle_TIMEOUT_RTX(si, entry);
     }
     else if (event == TIMEOUT_PST)
     {
@@ -1296,6 +1303,7 @@ int chitcpd_tcp_state_handle_LAST_ACK(serverinfo_t *si,
     else if (event == TIMEOUT_RTX)
     {
         /* Your code goes here */
+        chitcpd_tcp_handle_TIMEOUT_RTX(si, entry);
     }
     else if (event == TIMEOUT_PST)
     {
