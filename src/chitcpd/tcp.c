@@ -143,16 +143,18 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
     void_param->entry = entry;
     for (int i = 0; i < tcp_data->tcp_timer->num_timers; i++)
     {
-        chilog(DEBUG, "[CALLBACK INIT] TIMER %d INITIALIZED", i);
         timer = tcp_data->tcp_timer->timers[i];
+        chilog(DEBUG, "[CALLBACK INIT] TIMER %d INITIALIZED", timer->id);
         timer->callback = callback_func;
         if (i == 0) {
             void_param->timer_type = RETRANSMISSION;
+            mt_set_timer_name(tcp_data->tcp_timer, i, "RETRANSMISSION");
             chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param->timer_type);
         }
         else if (i == 1)
         {
             void_param->timer_type = PERSIST;
+            mt_set_timer_name(tcp_data->tcp_timer, i, "PERSIST");
             chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param->timer_type);
         }
         timer->callback_args = void_param;
@@ -304,6 +306,10 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
         {
             chilog(DEBUG, "[SET_TIMER] NEW TIMER SET");
             tcp_data->rtms_timer_on = true;
+            callback_void_param_t *void_param_2 = malloc(sizeof (callback_void_param_t));
+            void_param_2 = (callback_void_param_t *) timer->callback_args;
+            chilog(DEBUG, "[SET_TIMER] TIMER TYPE AFTER CAST CALL BACK ARG IS %d", void_param_2->timer_type);
+            chilog(DEBUG, "[SET_TIMER] TIMER NAME IS %s", timer->name);
             mt_set_timer(tcp_data->tcp_timer, timer_type, timeout, 
                             timer->callback, timer->callback_args); 
             return;

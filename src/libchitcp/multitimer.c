@@ -66,6 +66,7 @@ void *multitimer_thread(void *args)
         {
             single_timer_t *head = mt->active_timers;
             chilog(DEBUG, "[MULTITIMER] current timer is %d", head->id); 
+            chilog(DEBUG, "[MULTITIMER] current timer is %s", head->name); 
             rc = pthread_cond_timedwait(&mt->condwait, &mt->lock, 
                                     head->timeout_spec);
             if (rc == ETIMEDOUT)
