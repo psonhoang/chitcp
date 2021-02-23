@@ -154,7 +154,7 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
     tcp_data->unack_bytes = 0;
     tcp_data->probe_packet = NULL;
     tcp_data->closing = false;
-    tcp_data->state_after_close = NULL;
+    tcp_data->state_after_close = FIN_WAIT_1;
 }
 
 void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
