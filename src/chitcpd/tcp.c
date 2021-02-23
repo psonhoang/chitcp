@@ -153,6 +153,8 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
     tcp_data->first_RTT = false;
     tcp_data->unack_bytes = 0;
     tcp_data->probe_packet = NULL;
+    tcp_data->closing = false;
+    tcp_data->state_after_close = NULL;
 }
 
 void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
@@ -372,6 +374,7 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
         /* Update SND_NXT after sending fin segment */
         tcp_data->SND_NXT++;
         /* Transition to state after CLOSE call (FIN_WAIT_1 || LAST_ACK) */
+        tcp_data->closing = false;
         chitcpd_update_tcp_state(si, entry, tcp_data->state_after_close);
         return;
     }
