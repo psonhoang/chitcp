@@ -135,7 +135,7 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
      * and creation of retransmission thread, goes here */
     tcp_data->tcp_timer = malloc(sizeof (multi_timer_t));
     int rc = mt_init(tcp_data->tcp_timer, 2);
-    single_timer_t *timer;
+    // single_timer_t *timer;
     callback_void_param_t *void_param = malloc(sizeof (callback_void_param_t));
     //void_param->si = malloc (sizeof (serverinfo_t));
     void_param->si = si;
@@ -144,9 +144,11 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
     for (int i = 0; i < tcp_data->tcp_timer->num_timers; i++)
     {
         chilog(DEBUG, "[CALLBACK INIT] TIMER %d INITIALIZED", i);
-        timer = tcp_data->tcp_timer->timers[i];
-        timer->callback = callback_func;
-        if (i == 0) {
+        // timer = tcp_data->tcp_timer->timers[i];
+        // timer->callback = callback_func;
+        tcp_data->tcp_timer->timers[i]->callback = callback_func;
+        if (i == 0)
+        {
             void_param->timer_type = RETRANSMISSION;
             chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param->timer_type);
         }
@@ -155,9 +157,9 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
             void_param->timer_type = PERSIST;
             chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param->timer_type);
         }
-        timer->callback_args = void_param;
+        tcp_data->tcp_timer->timers[i]->callback_args = void_param;
         callback_void_param_t *void_param_2 = malloc(sizeof (callback_void_param_t));
-        void_param_2 = (callback_void_param_t *) timer->callback_args;
+        void_param_2 = (callback_void_param_t *)tcp_data->tcp_timer->timers[i]->callback_args;
         chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE AFTER CAST CALL BACK ARG IS %d", void_param_2->timer_type);
     }
     tcp_data->queue = NULL;
