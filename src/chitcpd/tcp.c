@@ -308,6 +308,7 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     retransmission_queue_t *elt;
+    chilog(DEBUG, "[REMOVE QUEUE] PACKET BEING REMOVED");
     DL_FOREACH(tcp_data->queue, elt)
     {
         if (elt->expected_ack_seq <= ack_seq) {
@@ -640,7 +641,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                 send_header->ack_seq = tcp_data->RCV_NXT;
                 send_header->win = tcp_data->RCV_WND;
                 chitcpd_send_tcp_packet(si, entry, send_packet);
-                add_to_queue(si, entry, send_header->seq, send_packet);          
+                //add_to_queue(si, entry, send_header->seq, send_packet);          
                 // Transition to ESTABLISHED
                 chitcpd_update_tcp_state(si, entry, ESTABLISHED);
                 chitcpd_process_send_buffer(si, entry);
@@ -802,7 +803,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                     tcp_data->SND_NXT = header->ack_seq;
                     tcp_data->SND_WND = header->win;
                     chitcpd_update_tcp_state(si, entry, ESTABLISHED);
-                    chitcpd_process_send_buffer(si, entry); /*ADDED */
+                    //chitcpd_process_send_buffer(si, entry); /*ADDED */
                     return 0;
                 }
             }
