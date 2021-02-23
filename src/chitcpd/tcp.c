@@ -883,12 +883,14 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                     chilog(DEBUG, "[CLOSING] Transitioning to CLOSED state");
                     chitcpd_update_tcp_state(si, entry, TIME_WAIT);
                     chitcpd_update_tcp_state(si, entry, CLOSED);
+                    mt_free(tcp_data->tcp_timer);
                     return 0;
                 }
                 else if (tcp_state == LAST_ACK)
                 {
                     chilog(DEBUG, "[LAST_ACK] Transitioning to CLOSED state");
                     chitcpd_update_tcp_state(si, entry, CLOSED);
+                    mt_free(tcp_data->tcp_timer);
                     return 0;
                 }
             }
