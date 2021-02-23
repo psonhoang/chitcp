@@ -185,6 +185,9 @@ typedef struct tcp_data
     /* Out-of-order list */
     out_of_order_list_t *list;
 
+    /* PST probe packet */
+    tcp_packet_t *probe_packet;
+
     /* RTT retransmission */
     bool_t first_RTT;
     uint64_t RTT;
