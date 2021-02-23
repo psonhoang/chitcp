@@ -306,7 +306,9 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
     {
         if (elt->expected_ack_seq <= ack_seq) {
             calculate_RTO(si, entry, elt->send_start, elt->retransmitted);
-            tcp_data->unack_bytes -= TCP_PAYLOAD_LEN(elt->packet);
+            int payload_len = TCP_PAYLOAD_LEN(elt->packet);
+            tcp_data->unack_bytes -= payload_len;
+            circular_buffer_read(&tcp_data->send, NULL, payload_len, FALSE);
             free_packet(elt->packet);
             DL_DELETE(tcp_data->queue, elt);
             free(elt);
@@ -350,31 +352,29 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
     /* bytes_in_send is the total bytes currently in the send buffer that needs to be sent */
     int bytes_in_send = circular_buffer_count(&tcp_data->send) - tcp_data->unack_bytes;
     chilog(DEBUG, "[SEND] TOTAL BYTE IN SEND BUFFER IS %d", bytes_in_send);
-    if (bytes_in_send == 0) 
+    if (circular_buffer_count(&tcp_data->send) == 0 && tcp_data->closing)
     {
-        /* If no bytes in send buffer, 
-         * then send FIN if CLOSE call has been made
-         * else return
-         */
-        if (tco_data->closing)
-        {
-            /* Create packet with fin segment to send over to other host */
-            tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
-            chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
-            tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
-            send_header->fin = 1;
-            send_header->ack = 1;
-            send_header->syn = 0;
-            send_header->seq = tcp_data->SND_NXT;
-            send_header->ack_seq = tcp_data->RCV_NXT;
-            send_header->win = tcp_data->RCV_WND;
-            chitcpd_send_tcp_packet(si, entry, send_packet);
-            add_to_queue(si, entry, send_header->seq, send_packet);
-            /* Update SND_NXT after sending fin segment */
-            tcp_data->SND_NXT += 1;
-            /* Transition to FIN_WAIT_1 */
-            chitcpd_update_tcp_state(si, entry, tcp_data->state_after_close);
-        }
+        /* Create packet with fin segment to send over to other host */
+        tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
+        chitcpd_tcp_packet_create(entry, send_packet, NULL, 0);
+        tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
+        send_header->fin = 1;
+        send_header->ack = 1;
+        send_header->syn = 0;
+        send_header->seq = tcp_data->SND_NXT;
+        send_header->ack_seq = tcp_data->RCV_NXT;
+        send_header->win = tcp_data->RCV_WND;
+        chitcpd_send_tcp_packet(si, entry, send_packet);
+        add_to_queue(si, entry, send_header->seq, send_packet);
+        /* Update SND_NXT after sending fin segment */
+        tcp_data->SND_NXT++;
+        /* Transition to state after CLOSE call (FIN_WAIT_1 || LAST_ACK) */
+        chitcpd_update_tcp_state(si, entry, tcp_data->state_after_close);
+        return;
+    }
+    else if (bytes_in_send == 0) 
+    {
+        /* If no bytes in send buffer, return */
         return;
     }
     int possible_send_bytes = tcp_data->SND_WND;
@@ -425,8 +425,7 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
         }
         chilog(DEBUG, "[SEND] TOTAL PAYLOAD LEN IS %d", payload_len);
         uint8_t payload[payload_len];
-        bytes_read = circular_buffer_peek_at(&tcp_data->send, payload, 
-                                                tcp_data->unack_bytes, payload_len);
+        bytes_read = circular_buffer_peek_at(&tcp_data->send, payload, tcp_data->SND_NXT, payload_len);
         chilog(DEBUG, "[SEND] TOTAL BYTES PEEKED FROM SENT BUFFER IS %d", 
                                                             bytes_read);
         chilog(DEBUG, "DATA REMAINING IN BUFFER IS %d", 
