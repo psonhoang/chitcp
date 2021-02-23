@@ -112,7 +112,7 @@ void callback_func(multi_timer_t* multi_timer, single_timer_t* single_timer,
     callback_void_param_t *void_params;
     void_params = (callback_void_param_t *) tcp_param; 
     chilog(DEBUG, "[CALLBACK] TIMER TYPE IS %d", void_params->timer_type);
-    if (void_params->timer_type == 0)
+    if (void_params->timer_type == RETRANSMISSION)
     {
         chilog(DEBUG, "[CALLBACK] CALLBACK FOR RETRANSMISSION");
     }
@@ -307,7 +307,10 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
             chilog(DEBUG, "[SET_TIMER] NEW TIMER SET");
             tcp_data->rtms_timer_on = true;
             mt_set_timer(tcp_data->tcp_timer, timer_type, timeout, 
-                            timer->callback, timer->callback_args); 
+                            timer->callback, timer->callback_args);
+            callback_void_param_t *void_param_2 = malloc(sizeof(callback_void_param_t));
+            void_param_2 = (callback_void_param_t *) timer->callback_args;
+            chilog(DEBUG, "[SET_TIMER] TIMER TYPE AFTER CAST CALL BACK ARG IS %d", void_param_2->timer_type);
             return;
         }
     }
