@@ -111,16 +111,18 @@ void chitcpd_update_tcp_state(serverinfo_t *si, chisocketentry_t *entry, tcp_sta
 void chitcpd_timeout(serverinfo_t *si, chisocketentry_t *entry, tcp_timer_type_t type)
 {
 
-
+    //chilog(DEBUG, "GOES INTO CHITCPD_TIMEOUT");
     active_chisocket_state_t *socket_state = &entry->socket_state.active;
     pthread_mutex_lock(&socket_state->lock_event);
     if (type == RETRANSMISSION)
     {
+        //chilog(DEBUG, "GOES INTO RETRANSMISSION");
         socket_state->flags.timeout_rtx = 1;
         chilog(MINIMAL, "[S%i] RETRANSMISSION TIMEOUT", SOCKET_NO(si, entry));
     }
     else if(type == PERSIST)
     {
+        //chilog(DEBUG, "GOES INTO PERSIST");
         socket_state->flags.timeout_pst = 1;
         chilog(MINIMAL, "[S%i] PERSIST TIMEOUT", SOCKET_NO(si, entry));
     }

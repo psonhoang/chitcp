@@ -65,6 +65,7 @@ void *multitimer_thread(void *args)
         else
         {
             single_timer_t *head = mt->active_timers;
+            chilog(DEBUG, "[MULTITIMER] current timer is %d", head->id); 
             rc = pthread_cond_timedwait(&mt->condwait, &mt->lock, 
                                     head->timeout_spec);
             if (rc == ETIMEDOUT)
@@ -72,6 +73,7 @@ void *multitimer_thread(void *args)
                 chilog(DEBUG, "[MULTITIMER] TIME OUT!\r\n");
                 if (head->callback != NULL)
                 {
+                    chilog(DEBUG, "[MULTITIMER] callback function is available"); 
                     head->callback(mt, head, head->callback_args);
                 }
                 head->active = false;
