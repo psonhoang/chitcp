@@ -175,6 +175,8 @@ typedef struct tcp_data
 
     /* Has a CLOSE been requested on this socket? */
     bool_t closing;
+    /* The state after CLOSE call */
+    tcp_state_t state_after_close;
 
     /* multitimer */
     multi_timer_t *tcp_timer;
@@ -184,6 +186,9 @@ typedef struct tcp_data
 
     /* Out-of-order list */
     out_of_order_list_t *list;
+
+    /* PST probe packet */
+    tcp_packet_t *probe_packet;
 
     /* RTT retransmission */
     bool_t first_RTT;
