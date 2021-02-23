@@ -778,6 +778,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
             else
             {
                 chilog(DEBUG,"[LISTEN] IT COMES OTHER EVENTS IN THE PACKET_ARRIVAL HANDLER FUNCTION");
+                /* Probe check */
                 if (tcp_data->SND_WND == 0)
                 {
                     /* Receives ACk after probe segment (probing) */
@@ -787,29 +788,26 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                     if (header->win > 0)
                     {
                         /* If window > 0 */
-                        free(send_probe_segment);
+                        free(tcp_data->probe_packet);
                         circular_buffer_read(&tcp_data->send, NULL, 1, FALSE);
-                        tcp_data->SND_WND = header->win;
-                        tcp_data->SND_UNA = header->ack_seq;
-                        chitcpd_process_send_buffer(si, entry);
                     }
                     else
                     {
                         /* Resets timer if window == 0 */
                         set_timer(si, entry, tcp_data->RTO, PERSIST);
-                        return 0;
                     }
                 }
                 else if (header->win == 0)
                 {
                     /* Advertised window is 0 */
                     tcp_data->SND_WND = 0;
-                    // Starts persist timer
+                    /* Starts persist timer */
                     send_probe_segment(si, entry);
                     set_timer(si, entry, tcp_data->RTO, PERSIST);
-                    return 0;
                 }
-                else if ((tcp_data->SND_UNA <= header->ack_seq) &&
+                
+                /* ACK check */
+                if ((tcp_data->SND_UNA <= header->ack_seq) &&
                     (header->ack_seq <= tcp_data->SND_NXT))
                 {
                     remove_from_queue(si, entry, header->ack_seq);
@@ -898,32 +896,17 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                     {
                         /* Reassemblnig data from out of order list */
                         DL_SORT(tcp_data->list, segmentcmp);
+                        int next_seq = tcp_data->RCV_NXT;
                         DL_FOREACH(tcp_data->list, elt);
                         {
-                            int bytes_written = circular_buffer_write(&tcp_data->recv,
-                                                                      TCP_PAYLOAD_START(elt->packet),
-                                                                      TCP_PAYLOAD_LEN(elt->packet),
-                                                                      FALSE);
-                            chilog(DEBUG, "[SEND] payload length: %d",
-                                   TCP_PAYLOAD_LEN(packet));
-                            chilog(DEBUG, "[SEND] bytes written is %d",
-                                   bytes_written);
-                            if (bytes_written > 0)
+                            if (elt->seq == next_seq)
                             {
-                                tcp_data->RCV_NXT += bytes_written;
-                                
+                                chitcp_packet_list_append(&tcp_data->pending_packets, elt->packet);
+                                next_seq += TCP_PAYLOAD_LEN(elt->packet);
                                 DL_DELETE(tcp_data->list, elt);
                                 free(elt);
                             }
-                            tcp_data->RCV_WND = circular_buffer_available(&tcp_data->recv);
-                            send_header->ack = 1;
-                            send_header->syn = 0;
-                            send_header->fin = 0;
-                            send_header->seq = tcp_data->SND_NXT;
-                            send_header->ack_seq = tcp_data->RCV_NXT;
-                            send_header->win = tcp_data->RCV_WND;
-                            chitcpd_send_tcp_packet(si, entry, send_packet);
-                            add_to_queue(si, entry, send_header->seq, send_packet);
+                            
                         }
                     }
                 }
