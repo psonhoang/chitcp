@@ -151,12 +151,14 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
         if (i == 0)
         {
             void_param_1->timer_type = RETRANSMISSION;
+            mt_set_timer_name(tcp_data->tcp_timer, RETRANSMISSION, "RETRANSMISSION");
             tcp_data->tcp_timer->timers[i]->callback_args = void_param_1;
             chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param_1->timer_type);
         }
         else if (i == 1)
         {
             void_param_2->timer_type = PERSIST;
+            mt_set_timer_name(tcp_data->tcp_timer, PERSIST, "PERSIST");
             tcp_data->tcp_timer->timers[i]->callback_args = void_param_2;
             chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param_2->timer_type);
         }
@@ -216,17 +218,18 @@ uint64_t max_var(uint64_t clock_g, uint64_t rtt_var)
 void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry, 
                     struct timespec *start_time, bool_t retransmitted)
 {
+    tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     if (retransmitted)
     {
+        chilog(DEBUG, "[RTO CALCULATION] RTO TIME IS %lf", tcp_data->RTO);
         return;
     }
-    tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     struct timespec *result = malloc (sizeof (struct timespec));
     struct timespec *end_time = malloc (sizeof (struct timespec));
     clock_gettime(CLOCK_REALTIME, end_time);
     timespec_subtract(result, start_time, end_time);
     tcp_data->RTT = result->tv_sec * SECOND + result->tv_nsec;
-    uint64_t RTO;
+    double RTO;
     if (tcp_data->first_RTT)
     {
         tcp_data->SRTT = tcp_data->RTT;
@@ -241,6 +244,7 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
             tcp_data->RTO = RTO;
         }
         tcp_data->first_RTT = false;
+        chilog(DEBUG, "[RTO CALCULATION] RTO TIME IS %lf", tcp_data->RTO);
         return;
     }
     else 
@@ -256,6 +260,7 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
         {
             tcp_data->RTO = RTO;
         }
+        chilog(DEBUG, "[RTO CALCULATION] RTO TIME IS %lf", tcp_data->RTO);
         return;
     }
 }
@@ -304,6 +309,7 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
         if ((!tcp_data->rtms_timer_on) && (queue != NULL)) // check if send buffer is empty
         {
             chilog(DEBUG, "[SET_TIMER] NEW TIMER SET");
+            chilog(DEBUG, "[SET_TIMER] RTO TIME IS %lf", tcp_data->RTO);
             tcp_data->rtms_timer_on = true;
             mt_set_timer(tcp_data->tcp_timer, timer_type, timeout, 
                             timer->callback, timer->callback_args);
@@ -334,6 +340,7 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
     DL_FOREACH(tcp_data->queue, elt)
     {
         if (elt->expected_ack_seq <= ack_seq) {
+            chilog(DEBUG, "[RTO CALCULATION] START RTO CALCULATION");
             calculate_RTO(si, entry, elt->send_start, elt->retransmitted);
             int payload_len = TCP_PAYLOAD_LEN(elt->packet);
             tcp_data->unack_bytes -= payload_len;

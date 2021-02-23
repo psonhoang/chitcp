@@ -244,6 +244,8 @@ int mt_cancel_timer(multi_timer_t *mt, uint16_t id);
  */
 int mt_set_timer_name(multi_timer_t *mt, uint16_t id, const char *name);
 
+int mt_chilog_single_timer(loglevel_t level, single_timer_t *timer);
+
 
 /* mt_chilog - Prints all the timers in a multitimer using chilog
  *

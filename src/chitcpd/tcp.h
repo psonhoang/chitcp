@@ -50,8 +50,8 @@
 #define TCP_MSS (536)
 #define CLOCK_G (50000000L)
 #define MIN_RTO (200000000L)
-#define BETA (1/4)
-#define ALPHA (1/8)
+#define BETA (0.25)
+#define ALPHA (0.125)
 
 /* TCP events. Roughly correspond to the ones specified in
  * http://tools.ietf.org/html/rfc793#section-3.9 */
@@ -192,10 +192,10 @@ typedef struct tcp_data
 
     /* RTT retransmission */
     bool_t first_RTT;
-    uint64_t RTT;
-    uint64_t RTO;
-    uint64_t SRTT;
-    uint64_t RTTVAR;
+    double RTT;
+    double RTO;
+    double SRTT;
+    double RTTVAR;
     bool_t rtms_timer_on;
 } tcp_data_t;
 

@@ -72,6 +72,7 @@ void *multitimer_thread(void *args)
             if (rc == ETIMEDOUT)
             {
                 chilog(DEBUG, "[MULTITIMER] TIME OUT!\r\n");
+                mt_chilog_single_timer(DEBUG, head);
                 if (head->callback != NULL)
                 {
                     chilog(DEBUG, "[MULTITIMER] callback function is available"); 
