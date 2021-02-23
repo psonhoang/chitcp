@@ -279,13 +279,16 @@ void free_packet(tcp_packet_t *packet)
 void set_timer(serverinfo_t *si, chisocketentry_t *entry, 
                             uint64_t timeout, tcp_timer_type_t timer_type)
 {
+    chilog(DEBUG, "[SET_TIMER] SET TIMER BEGINS");
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     retransmission_queue_t *queue = tcp_data->queue;
     single_timer_t *timer = tcp_data->tcp_timer->timers[timer_type];
     if (timer_type == RETRANSMISSION)
     {
+        chilog(DEBUG, "[SET_TIMER] RETRANSMISSION TIMER");
         if ((!tcp_data->rtms_timer_on) && (queue != NULL)) // check if send buffer is empty
         {
+            chilog(DEBUG, "[SET_TIMER] NEW TIMER SET");
             tcp_data->rtms_timer_on = true;
             mt_set_timer(tcp_data->tcp_timer, timer_type, timeout, 
                             timer->callback, timer->callback_args); 
@@ -294,6 +297,7 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
     }
     else 
     {
+        chilog(DEBUG, "[SET_TIMER] PERSIST TIMER");
         mt_set_timer(tcp_data->tcp_timer, timer_type, timeout, 
                     timer->callback, timer->callback_args); 
         return;

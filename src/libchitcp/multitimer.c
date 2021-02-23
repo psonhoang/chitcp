@@ -252,6 +252,7 @@ int timeoutcmp(single_timer_t *a, single_timer_t *b)
 /* See multitimer.h */
 int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, mt_callback_func callback, void* callback_args)
 {
+    chilog(DEBUG, "[MULTITIMER] SET TIMER");
     /* Your code here */
     /* Checks if valid id */
     if (id < 0 || id >= mt->num_timers)
@@ -299,6 +300,7 @@ int mt_cancel_timer(multi_timer_t *mt, uint16_t id)
 {
     /* Your code here */
     /* Checks if valid id */
+    chilog(DEBUG, "[MULTITIMER] CANCEL TIMER");
     if (id < 0 || id >= mt->num_timers)
     {
         return CHITCP_EINVAL;
