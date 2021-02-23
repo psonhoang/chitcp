@@ -305,15 +305,8 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
         {
             chilog(DEBUG, "[SET_TIMER] NEW TIMER SET");
             tcp_data->rtms_timer_on = true;
-            callback_void_param_t *void_param_2 = malloc(sizeof (callback_void_param_t));
-            void_param_2 = (callback_void_param_t *) timer->callback_args;
-            chilog(DEBUG, "[SET_TIMER] TIMER TYPE AFTER CAST CALL BACK ARG IS %d", void_param_2->timer_type);
-            chilog(DEBUG, "[SET_TIMER] TIMER NAME IS %s", timer->name);
             mt_set_timer(tcp_data->tcp_timer, timer_type, timeout, 
                             timer->callback, timer->callback_args);
-            callback_void_param_t *void_param_2 = malloc(sizeof(callback_void_param_t));
-            void_param_2 = (callback_void_param_t *) timer->callback_args;
-            chilog(DEBUG, "[SET_TIMER] TIMER TYPE AFTER CAST CALL BACK ARG IS %d", void_param_2->timer_type);
             return;
         }
     }
