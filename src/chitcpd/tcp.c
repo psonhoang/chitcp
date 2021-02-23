@@ -321,15 +321,18 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
 
 void add_to_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq seq_num, tcp_packet_t *packet)
 {
+    chilog(DEBUG, "[DEBUG] IT COMES TO ADD TO QUEUE");
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     retransmission_queue_t *item = malloc(sizeof (retransmission_queue_t));
     item->packet = packet;
+    item->send_start = malloc (sizeof (struct timespec));
     //item->timeout_spec = count_timeout_spec(tcp_data->RTO);
     clock_gettime(CLOCK_REALTIME, item->send_start);
     item->retransmitted = false;
     item->expected_ack_seq = TCP_PAYLOAD_LEN(packet) + seq_num + 1;
     DL_APPEND(tcp_data->queue, item);
     set_timer(si, entry, tcp_data->RTO, RETRANSMISSION);
+    chilog(DEBUG, "[DEBUG] ADD TO QUEUE ENDS");
 }
 
 /* This function looks at the current state
