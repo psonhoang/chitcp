@@ -111,7 +111,6 @@ void callback_func(multi_timer_t* multi_timer, single_timer_t* single_timer,
     chilog(DEBUG, "[CALLBACK] IT IS CALLED");
     callback_void_param_t *void_params;
     void_params = (callback_void_param_t *) tcp_param; 
-    chilog(DEBUG, "[CALLBACK] TIMER TYPE IS %d", void_params->timer_type);
     if (void_params->timer_type == RETRANSMISSION)
     {
         chilog(DEBUG, "[CALLBACK] CALLBACK FOR RETRANSMISSION");
@@ -153,14 +152,14 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
             void_param_1->timer_type = RETRANSMISSION;
             mt_set_timer_name(tcp_data->tcp_timer, RETRANSMISSION, "RETRANSMISSION");
             tcp_data->tcp_timer->timers[i]->callback_args = void_param_1;
-            chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param_1->timer_type);
+            //chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param_1->timer_type);
         }
         else if (i == 1)
         {
             void_param_2->timer_type = PERSIST;
             mt_set_timer_name(tcp_data->tcp_timer, PERSIST, "PERSIST");
             tcp_data->tcp_timer->timers[i]->callback_args = void_param_2;
-            chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param_2->timer_type);
+            //chilog(DEBUG, "[CALLBACK INIT] TIMER TYPE IS %d", void_param_2->timer_type);
         }
     }
     tcp_data->queue = NULL;
@@ -219,9 +218,10 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
                     struct timespec *start_time, bool_t retransmitted)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
+    // tcp_data->RTO = MIN_RTO;
     if (retransmitted)
     {
-        chilog(DEBUG, "[RTO CALCULATION] RTO TIME IS %lf", tcp_data->RTO);
+        chilog(DEBUG, "[RTO CALCULATION] RTO RETRANSMITTED TIME IS %i", tcp_data->RTO);
         return;
     }
     struct timespec *result = malloc (sizeof (struct timespec));
@@ -268,20 +268,6 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
 
 /* HELPER FUNCTION */
 
-/* Generate random uint32_t */
-uint32_t random_uint32()
-{
-    /* This code is referred from a StackOverflow answer
-     * Source: See README
-     */
-    uint32_t x = rand() & 0xff;
-    x |= (rand() & 0xff) << 8;
-    x |= (rand() & 0xff) << 16;
-    x |= (rand() & 0xff) << 24;
-
-    return x;
-}
-
 /* This function frees a packet we create
  * or remove from the pending queue
  * Input: the packet we need to free
@@ -299,7 +285,7 @@ void free_packet(tcp_packet_t *packet)
 void set_timer(serverinfo_t *si, chisocketentry_t *entry, 
                             uint64_t timeout, tcp_timer_type_t timer_type)
 {
-    chilog(DEBUG, "[SET_TIMER] SET TIMER BEGINS");
+    chilog(DEBUG, "[SET_TIMER] SET TIMER FUNCTION");
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     retransmission_queue_t *queue = tcp_data->queue;
     single_timer_t *timer = tcp_data->tcp_timer->timers[timer_type];
@@ -308,7 +294,6 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
         chilog(DEBUG, "[SET_TIMER] RETRANSMISSION TIMER");
         if ((!tcp_data->rtms_timer_on) && (queue != NULL)) // check if send buffer is empty
         {
-            chilog(DEBUG, "[SET_TIMER] NEW TIMER SET");
             chilog(DEBUG, "[SET_TIMER] RTO TIME IS %i", tcp_data->RTO);
             tcp_data->rtms_timer_on = true;
             mt_set_timer(tcp_data->tcp_timer, timer_type, timeout, 
@@ -337,6 +322,7 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
         return;
     }
     chilog(DEBUG, "[REMOVE QUEUE] QUEUE IS NOT EMPTY");
+    int i = 0;
     DL_FOREACH(tcp_data->queue, elt)
     {
         if (elt->expected_ack_seq <= ack_seq) {
@@ -348,6 +334,19 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
             free_packet(elt->packet);
             DL_DELETE(tcp_data->queue, elt);
             free(elt);
+            /* DEBUG */
+            retransmission_queue_t *elt;
+            int rtx_len;
+            DL_COUNT(tcp_data->queue, elt, rtx_len);
+            if (i == 0)
+            {
+                chilog(DEBUG, "[REMOVE QUEUE] FIRST PACKET REMOVED!!");
+
+            }
+            chilog(DEBUG, "[REMOVE QUEUE] REMAINING UNACK BYTES IS %i", tcp_data->unack_bytes);
+            chilog(DEBUG, "[REMOVE QUEUE] QUEUE LENGTH IS %i", rtx_len);
+            i++;
+    /* DEBUG ENDS */
         }
         else
         {
@@ -355,6 +354,7 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
         }
     }
     tcp_data->rtms_timer_on = false;
+    chilog(DEBUG, "CANCEL TIMER CALLED HERE");
     mt_cancel_timer(tcp_data->tcp_timer, RETRANSMISSION);
     set_timer(si, entry, tcp_data->RTO, RETRANSMISSION);
 }
@@ -366,11 +366,16 @@ void add_to_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq seq_num, tc
     retransmission_queue_t *item = malloc(sizeof (retransmission_queue_t));
     item->packet = packet;
     item->send_start = malloc (sizeof (struct timespec));
-    //item->timeout_spec = count_timeout_spec(tcp_data->RTO);
     clock_gettime(CLOCK_REALTIME, item->send_start);
     item->retransmitted = false;
     item->expected_ack_seq = TCP_PAYLOAD_LEN(packet) + seq_num + 1;
     DL_APPEND(tcp_data->queue, item);
+    /* DEBUG */
+    retransmission_queue_t *elt;
+    int rtx_len;
+    DL_COUNT(tcp_data->queue, elt, rtx_len);
+    chilog(DEBUG, "[DEBUG] QUEUE LENGTH IS %i", rtx_len);
+    /* DEBUG ENDS */
     set_timer(si, entry, tcp_data->RTO, RETRANSMISSION);
     chilog(DEBUG, "[DEBUG] ADD TO QUEUE ENDS");
 }
@@ -390,7 +395,7 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     /* bytes_in_send is the total bytes currently in the send buffer that needs to be sent */
     int bytes_in_send = circular_buffer_count(&tcp_data->send) - tcp_data->unack_bytes;
-    chilog(DEBUG, "[SEND] TOTAL BYTE NEEDS TO BE SENT IS %d", bytes_in_send);
+    //chilog(DEBUG, "[SEND] TOTAL BYTE NEEDS TO BE SENT IS %d", bytes_in_send);
     if (circular_buffer_count(&tcp_data->send) == 0 && tcp_data->closing)
     {
         chilog(DEBUG, "[SEND] CLOSING STATE");
@@ -421,8 +426,10 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
     }
     else
     {
+    chilog(DEBUG, "[SEND] THERE ARE THINGS TO SEND");
     int possible_send_bytes = tcp_data->SND_WND;
-    chilog(DEBUG, "[SEND] TOTAL SEND WINDOW IS %d", possible_send_bytes);
+    // chilog(DEBUG, "[SEND] TOTAL BYTE NEEDS TO BE SENT IS %d", bytes_in_send);
+    // chilog(DEBUG, "[SEND] TOTAL SEND WINDOW IS %d", possible_send_bytes);
     // total_send_bytes are total bytes we are going to send
     int total_send_bytes = 0;
     int bytes_read;
@@ -443,12 +450,22 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
          */
         total_send_bytes = possible_send_bytes;
     }
-    chilog(DEBUG, "[SEND] TOTAL BYTE GOING TO BE SENT IS %d", 
-                                            total_send_bytes);
+    // chilog(DEBUG, "[SEND] TOTAL BYTE GOING TO BE SENT IS %d", 
+    //                                         total_send_bytes);
+    // chilog(DEBUG, "[SEND] TOTAL UNACK_BYTES IS %d", 
+    //                                         tcp_data->unack_bytes);
     int payload_len;
+    int i = 0;
     while (total_send_bytes > 0)
     {
-        //chilog(DEBUG, "[SEND] ENTER LOOP");
+        chilog(DEBUG, "[SEND] ENTER LOOP");
+        chilog(DEBUG, "[SEND] PACKET %i", i);
+        chilog(DEBUG, "[SEND] TOTAL BYTE NEEDS TO BE SENT IS %d", bytes_in_send);
+        chilog(DEBUG, "[SEND] TOTAL SEND WINDOW IS %d", possible_send_bytes);
+        chilog(DEBUG, "[SEND] TOTAL BYTE GOING TO BE SENT IS %d", 
+                                            total_send_bytes);
+        chilog(DEBUG, "[SEND] TOTAL UNACK_BYTES IS %d", 
+                                            tcp_data->unack_bytes);
         /* Initialize send packet */
         tcp_packet_t *send_packet = malloc(sizeof(tcp_packet_t));
         if (total_send_bytes >= TCP_MSS)
@@ -491,10 +508,10 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
             send_header->seq = tcp_data->SND_NXT;
             send_header->win = tcp_data->RCV_WND;
             /* Send packet */
-            chilog(DEBUG, "[SEND] send payload's length: %d", 
-                                        TCP_PAYLOAD_LEN(send_packet));
+            //chilog(DEBUG, "[SEND] send payload's length: %d", TCP_PAYLOAD_LEN(send_packet));
             chitcpd_send_tcp_packet(si, entry, send_packet);
             add_to_queue(si, entry, send_header->seq, send_packet);
+            i++;
         }
     }
     }
@@ -929,9 +946,9 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                                                                 TCP_PAYLOAD_START(packet),
                                                                 TCP_PAYLOAD_LEN(packet),
                                                                 FALSE);
-                    chilog(DEBUG, "[SEND] payload length: %d", 
+                    chilog(DEBUG, "[RECEIVE] payload length: %d", 
                                                 TCP_PAYLOAD_LEN(packet));
-                    chilog(DEBUG, "[SEND] bytes written is %d", 
+                    chilog(DEBUG, "[RECEIVE] bytes written is %d", 
                                                 bytes_written);
                     tcp_data->RCV_NXT += bytes_written;
                     tcp_data->RCV_WND = circular_buffer_available(&tcp_data->recv);
