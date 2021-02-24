@@ -50,6 +50,7 @@
 #define TCP_MSS (536)
 #define CLOCK_G (50000000L)
 #define MIN_RTO (200000000L)
+#define MAX_RTO (60000000000L)
 #define BETA (0.25)
 #define ALPHA (0.125)
 

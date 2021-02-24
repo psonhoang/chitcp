@@ -218,7 +218,7 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
                     struct timespec *start_time, bool_t retransmitted)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
-    // tcp_data->RTO = MIN_RTO;
+    //tcp_data->RTO = MIN_RTO;
     if (retransmitted)
     {
         chilog(DEBUG, "[RTO CALCULATION] RTO RETRANSMITTED TIME IS %i", tcp_data->RTO);
@@ -229,18 +229,28 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
     clock_gettime(CLOCK_REALTIME, end_time);
     timespec_subtract(result, end_time, start_time);
     tcp_data->RTT = result->tv_sec * SECOND + result->tv_nsec;
+    chilog(DEBUG, "RTT timespec is %lis %lins", result->tv_sec, result->tv_nsec);
+    chilog(DEBUG, "[RTO CALCULATION] CALCULATED RTT TIME IS %i", tcp_data->RTT);
     uint64_t RTO;
     if (tcp_data->first_RTT)
     {
         tcp_data->SRTT = tcp_data->RTT;
         tcp_data->RTTVAR = tcp_data->RTT / 2;
         RTO = tcp_data->SRTT + max_var(CLOCK_G, 4 * tcp_data->RTTVAR);
+        chilog(DEBUG, "[RTO CALCULATION] CALCULATED RTO TIME IS %i", RTO);
         if (RTO < MIN_RTO)
         {
+            chilog(DEBUG, "[RTO CALCULATION] MIN RTO CASE");    
             tcp_data->RTO = MIN_RTO;
         }
+        // else if (RTO > MAX_RTO)
+        // {
+        //     chilog(DEBUG, "[RTO CALCULATION] MAX RTO CASE");    
+        //     tcp_data->RTO = MAX_RTO;
+        // }
         else
         {
+            chilog(DEBUG, "[RTO CALCULATION] NORMAL RTO CASE");    
             tcp_data->RTO = RTO;
         }
         tcp_data->first_RTT = false;
@@ -249,15 +259,25 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
     }
     else 
     {
-        tcp_data->RTTVAR = (tcp_data->RTTVAR / 4 * 3) + abs(tcp_data->SRTT - tcp_data->RTT) /4;
-        tcp_data->SRTT = (7 * tcp_data->SRTT / 8) + tcp_data->RTT/8;
-        tcp_data->RTO = tcp_data->SRTT + max_var(CLOCK_G, 4 * tcp_data->RTTVAR);
+        tcp_data->RTTVAR = ((tcp_data->RTTVAR * 3) / 4) + (abs(tcp_data->SRTT - tcp_data->RTT) / 4);
+        //chilog(DEBUG, "[RTO CALCULATION] CALCULATED RTTVAR IS %i", tcp_data->RTTVAR);
+        tcp_data->SRTT = ((7 * tcp_data->SRTT) / 8) + (tcp_data->RTT/8);
+        //chilog(DEBUG, "[RTO CALCULATION] CALCULATED SRTT IS %i", tcp_data->SRTT);
+        RTO = tcp_data->SRTT + max_var(CLOCK_G, 4 * tcp_data->RTTVAR);
+        chilog(DEBUG, "[RTO CALCULATION] CALCULATED RTO TIME IS %i", RTO);
         if (RTO < MIN_RTO)
         {
+            chilog(DEBUG, "[RTO CALCULATION] MIN RTO CASE");    
             tcp_data->RTO = MIN_RTO;
         }
+        // else if (RTO > MAX_RTO)
+        // {
+        //     chilog(DEBUG, "[RTO CALCULATION] MAX RTO CASE");    
+        //     tcp_data->RTO = MAX_RTO;
+        // }
         else
         {
+            chilog(DEBUG, "[RTO CALCULATION] NORMAL RTO CASE");  
             tcp_data->RTO = RTO;
         }
         chilog(DEBUG, "[RTO CALCULATION] RTO TIME IS %i", tcp_data->RTO);
@@ -322,7 +342,12 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
         return;
     }
     chilog(DEBUG, "[REMOVE QUEUE] QUEUE IS NOT EMPTY");
+    // if (!tcp_data->rtms_timer_on)
+    // {
+    //     chilog(DEBUG, "[REMOVE QUEUE] THERE IS SOMETHING WRONG");
+    // }
     int i = 0;
+    int RTT;
     DL_FOREACH(tcp_data->queue, elt)
     {
         if (elt->expected_ack_seq <= ack_seq) {
@@ -331,6 +356,16 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
             int payload_len = TCP_PAYLOAD_LEN(elt->packet);
             tcp_data->unack_bytes -= payload_len;
             circular_buffer_read(&tcp_data->send, NULL, payload_len, FALSE);
+            /* DEBUG */
+            chilog(DEBUG, "[DEBUG] EXPECTED ACK SEQ = %i", elt->expected_ack_seq);
+            chilog(DEBUG, "[DEBUG] ACK SEQ FROM HOST = %i", ack_seq);
+            struct timespec *result = malloc (sizeof (struct timespec));
+            struct timespec *end_time = malloc (sizeof (struct timespec));
+            clock_gettime(CLOCK_REALTIME, end_time);
+            timespec_subtract(result, end_time, elt->send_start);
+            RTT = result->tv_sec * SECOND + result->tv_nsec;
+            chilog(DEBUG, "[REMOVE FROM QUEUE] RTT REAL timespec is %lis %lins", result->tv_sec, result->tv_nsec);
+            /* DEBUG ENDS */
             free_packet(elt->packet);
             DL_DELETE(tcp_data->queue, elt);
             free(elt);
@@ -353,9 +388,15 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
             break;
         }
     }
-    tcp_data->rtms_timer_on = false;
-    chilog(DEBUG, "CANCEL TIMER CALLED HERE");
-    mt_cancel_timer(tcp_data->tcp_timer, RETRANSMISSION);
+    if (tcp_data->rtms_timer_on)
+    {
+        tcp_data->rtms_timer_on = false;
+        chilog(DEBUG, "CANCEL TIMER CALLED HERE");
+        mt_cancel_timer(tcp_data->tcp_timer, RETRANSMISSION);
+    }
+    // tcp_data->rtms_timer_on = false;
+    // chilog(DEBUG, "CANCEL TIMER CALLED HERE");
+    // mt_cancel_timer(tcp_data->tcp_timer, RETRANSMISSION);
     set_timer(si, entry, tcp_data->RTO, RETRANSMISSION);
 }
 
@@ -368,7 +409,10 @@ void add_to_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq seq_num, tc
     item->send_start = malloc (sizeof (struct timespec));
     clock_gettime(CLOCK_REALTIME, item->send_start);
     item->retransmitted = false;
-    item->expected_ack_seq = TCP_PAYLOAD_LEN(packet) + seq_num + 1;
+    item->expected_ack_seq = TCP_PAYLOAD_LEN(packet) + seq_num;
+    chilog(DEBUG, "[DEBUG] PAYLOAD LEN IS = %i", TCP_PAYLOAD_LEN(packet));
+    chilog(DEBUG, "[DEBUG] SEQUENCE NUMBER IS = %i", seq_num);
+    chilog(DEBUG, "[DEBUG] EXPECTED ACK SEQ = %i", item->expected_ack_seq);
     DL_APPEND(tcp_data->queue, item);
     /* DEBUG */
     retransmission_queue_t *elt;
@@ -500,13 +544,13 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
                                                     payload, payload_len);
             tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
             /* Update TCP variables and send header */
-            tcp_data->SND_NXT = tcp_data->SND_NXT + bytes_read;
             send_header->ack = 1;
             send_header->syn = 0;
             send_header->fin = 0;
             send_header->ack_seq = tcp_data->RCV_NXT;
             send_header->seq = tcp_data->SND_NXT;
             send_header->win = tcp_data->RCV_WND;
+            tcp_data->SND_NXT = tcp_data->SND_NXT + bytes_read;
             /* Send packet */
             //chilog(DEBUG, "[SEND] send payload's length: %d", TCP_PAYLOAD_LEN(send_packet));
             chitcpd_send_tcp_packet(si, entry, send_packet);
