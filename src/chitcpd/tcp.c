@@ -955,7 +955,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                         int next_seq = tcp_data->RCV_NXT;
                         DL_FOREACH(tcp_data->list, elt);
                         {
-                            if (elt->seq == next_seq)
+                            if (elt != NULL && elt->seq == next_seq)
                             {
                                 /* Process contigous data in out-of-order list */
                                 chitcp_packet_list_append(&tcp_data->pending_packets, elt->packet);
