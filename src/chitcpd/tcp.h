@@ -53,6 +53,12 @@
 #define MAX_RTO (60000000000L)
 #define BETA (0.25)
 #define ALPHA (0.125)
+#define FIN_ON (1)
+#define ACK_ON (1)
+#define SYN_ON (1)
+#define FIN_OFF (0)
+#define ACK_OFF (0)
+#define SYN_OFF (0)
 
 /* TCP events. Roughly correspond to the ones specified in
  * http://tools.ietf.org/html/rfc793#section-3.9 */
