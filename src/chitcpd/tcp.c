@@ -348,6 +348,19 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
     // }
     int i = 0;
     int RTT;
+    int payload_len;
+    if (ack_seq < 0)
+    {
+        elt = tcp_data->queue;
+        calculate_RTO(si, entry, elt->send_start, elt->retransmitted);
+        payload_len = TCP_PAYLOAD_LEN(elt->packet);
+        tcp_data->unack_bytes -= payload_len;
+        circular_buffer_read(&tcp_data->send, NULL, payload_len, FALSE);
+        free_packet(elt->packet);
+        DL_DELETE(tcp_data->queue, elt);
+        free(elt);
+        return;
+    }
     DL_FOREACH(tcp_data->queue, elt)
     {
         if (elt->expected_ack_seq <= ack_seq) {
@@ -755,7 +768,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
         {
             // remove acknowledged segments from retransmission queue
             tcp_data->first_RTT = true;
-            remove_from_queue(si, entry, recv_ack_seq);
+            remove_from_queue(si, entry, -1);
             // reset tcp variables
             tcp_data->SND_UNA = recv_ack_seq;
             tcp_data->SND_NXT = recv_ack_seq;
@@ -927,7 +940,7 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                 {
                     // acceptable segment
                     tcp_data->first_RTT = true;
-                    remove_from_queue(si, entry, recv_ack_seq);
+                    remove_from_queue(si, entry, -1);
                     tcp_data->SND_UNA = recv_ack_seq;
                     tcp_data->SND_NXT = recv_ack_seq;
                     tcp_data->SND_WND = recv_win;
@@ -942,21 +955,21 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                 /* Probe check */
                 if (tcp_data->SND_WND == 0)
                 {
-                    // /* Receives ACk after probe segment (probing) */
-                    // chilog(DEBUG, "[LISTEN] RECEIVES ACK WHEN PROBING...");
-                    // /* Cancel timer */
-                    // mt_cancel_timer(tcp_data->tcp_timer, PERSIST);
-                    // if (header->win > 0)
-                    // {
-                    //     /* If window > 0 */
-                    //     free(tcp_data->probe_packet);
-                    //     circular_buffer_read(&tcp_data->send, NULL, 1, FALSE);
-                    // }
-                    // else
-                    // {
-                    //     /* Resets timer if window == 0 */
-                    //     set_timer(si, entry, tcp_data->RTO, PERSIST);
-                    // }
+                    /* Receives ACk after probe segment (probing) */
+                    chilog(DEBUG, "[LISTEN] RECEIVES ACK WHEN PROBING...");
+                    /* Cancel timer */
+                    mt_cancel_timer(tcp_data->tcp_timer, PERSIST);
+                    if (header->win > 0)
+                    {
+                        /* If window > 0 */
+                        free(tcp_data->probe_packet);
+                        circular_buffer_read(&tcp_data->send, NULL, 1, FALSE);
+                    }
+                    else
+                    {
+                        /* Resets timer if window == 0 */
+                        set_timer(si, entry, tcp_data->RTO, PERSIST);
+                    }
                 }
                 else if (header->win == 0)
                 {
@@ -964,8 +977,8 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                     tcp_data->SND_WND = 0;
                     /* Starts persist timer */
                     chilog(DEBUG, "[PROBE] SENDING PROBE SEGMENT FOR THE FIRST TIME");
-                    //send_probe_segment(si, entry);
-                    //set_timer(si, entry, tcp_data->RTO, PERSIST);
+                    send_probe_segment(si, entry);
+                    set_timer(si, entry, tcp_data->RTO, PERSIST);
                 }
                 
                 /* ACK check */
