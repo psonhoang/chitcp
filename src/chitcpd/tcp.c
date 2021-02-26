@@ -351,56 +351,64 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
     int payload_len;
     if (ack_seq < 0)
     {
-        elt = tcp_data->queue;
-        calculate_RTO(si, entry, elt->send_start, elt->retransmitted);
-        payload_len = TCP_PAYLOAD_LEN(elt->packet);
-        tcp_data->unack_bytes -= payload_len;
-        circular_buffer_read(&tcp_data->send, NULL, payload_len, FALSE);
-        free_packet(elt->packet);
-        DL_DELETE(tcp_data->queue, elt);
-        free(elt);
+        retransmission_queue_t *head = tcp_data->queue;
+        if (head == NULL)
+        {
+            head = head->next;
+        }
+        calculate_RTO(si, entry, head->send_start, head->retransmitted);
+        // payload_len = TCP_PAYLOAD_LEN(head->packet);
+        // tcp_data->unack_bytes -= payload_len;
+        // circular_buffer_read(&tcp_data->send, NULL, payload_len, FALSE);
+        free_packet(head->packet);
+        DL_DELETE(tcp_data->queue, head);
+        free(head);
         return;
     }
-    DL_FOREACH(tcp_data->queue, elt)
+    else 
     {
-        if (elt->expected_ack_seq <= ack_seq) {
-            chilog(DEBUG, "[RTO CALCULATION] START RTO CALCULATION");
-            calculate_RTO(si, entry, elt->send_start, elt->retransmitted);
-            int payload_len = TCP_PAYLOAD_LEN(elt->packet);
-            tcp_data->unack_bytes -= payload_len;
-            circular_buffer_read(&tcp_data->send, NULL, payload_len, FALSE);
-            /* DEBUG */
-            chilog(DEBUG, "[DEBUG] EXPECTED ACK SEQ = %i", elt->expected_ack_seq);
-            chilog(DEBUG, "[DEBUG] ACK SEQ FROM HOST = %i", ack_seq);
-            struct timespec *result = malloc (sizeof (struct timespec));
-            struct timespec *end_time = malloc (sizeof (struct timespec));
-            clock_gettime(CLOCK_REALTIME, end_time);
-            timespec_subtract(result, end_time, elt->send_start);
-            RTT = result->tv_sec * SECOND + result->tv_nsec;
-            chilog(DEBUG, "[REMOVE FROM QUEUE] RTT REAL timespec is %lis %lins", result->tv_sec, result->tv_nsec);
-            /* DEBUG ENDS */
-            free_packet(elt->packet);
-            DL_DELETE(tcp_data->queue, elt);
-            free(elt);
-            /* DEBUG */
-            retransmission_queue_t *elt;
-            int rtx_len;
-            DL_COUNT(tcp_data->queue, elt, rtx_len);
-            if (i == 0)
-            {
-                chilog(DEBUG, "[REMOVE QUEUE] FIRST PACKET REMOVED!!");
-
-            }
-            chilog(DEBUG, "[REMOVE QUEUE] REMAINING UNACK BYTES IS %i", tcp_data->unack_bytes);
-            chilog(DEBUG, "[REMOVE QUEUE] QUEUE LENGTH IS %i", rtx_len);
-            i++;
-    /* DEBUG ENDS */
-        }
-        else
+        DL_FOREACH(tcp_data->queue, elt)
         {
-            break;
+            if (elt->expected_ack_seq <= ack_seq) {
+                chilog(DEBUG, "[RTO CALCULATION] START RTO CALCULATION");
+                calculate_RTO(si, entry, elt->send_start, elt->retransmitted);
+                int payload_len = TCP_PAYLOAD_LEN(elt->packet);
+                tcp_data->unack_bytes -= payload_len;
+                circular_buffer_read(&tcp_data->send, NULL, payload_len, FALSE);
+                /* DEBUG */
+                chilog(DEBUG, "[DEBUG] EXPECTED ACK SEQ = %i", elt->expected_ack_seq);
+                chilog(DEBUG, "[DEBUG] ACK SEQ FROM HOST = %i", ack_seq);
+                struct timespec *result = malloc (sizeof (struct timespec));
+                struct timespec *end_time = malloc (sizeof (struct timespec));
+                clock_gettime(CLOCK_REALTIME, end_time);
+                timespec_subtract(result, end_time, elt->send_start);
+                RTT = result->tv_sec * SECOND + result->tv_nsec;
+                chilog(DEBUG, "[REMOVE FROM QUEUE] RTT REAL timespec is %lis %lins", result->tv_sec, result->tv_nsec);
+                /* DEBUG ENDS */
+                free_packet(elt->packet);
+                DL_DELETE(tcp_data->queue, elt);
+                free(elt);
+                /* DEBUG */
+                retransmission_queue_t *elt;
+                int rtx_len;
+                DL_COUNT(tcp_data->queue, elt, rtx_len);
+                if (i == 0)
+                {
+                    chilog(DEBUG, "[REMOVE QUEUE] FIRST PACKET REMOVED!!");
+
+                }
+                chilog(DEBUG, "[REMOVE QUEUE] REMAINING UNACK BYTES IS %i", tcp_data->unack_bytes);
+                chilog(DEBUG, "[REMOVE QUEUE] QUEUE LENGTH IS %i", rtx_len);
+                i++;
+                /* DEBUG ENDS */
+            }
+            else
+            {
+                break;
+            }
         }
     }
+    
     if (tcp_data->rtms_timer_on)
     {
         tcp_data->rtms_timer_on = false;
@@ -947,33 +955,6 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
             else
             {
                 chilog(DEBUG,"[LISTEN] IT COMES OTHER EVENTS IN THE PACKET_ARRIVAL HANDLER FUNCTION");
-                /* Probe check */
-                // if (tcp_data->SND_WND == 0)
-                // {
-                //     /* Receives ACk after probe segment (probing) */
-                //     chilog(DEBUG, "[LISTEN] RECEIVES ACK WHEN PROBING...");
-                //     /* Cancel timer */
-                //     mt_cancel_timer(tcp_data->tcp_timer, PERSIST);
-                //     if (header->win > 0)
-                //     {
-                //         /* If window > 0 */
-                //         free(tcp_data->probe_packet);
-                //         circular_buffer_read(&tcp_data->send, NULL, 1, FALSE);
-                //     }
-                //     else
-                //     {
-                //         /* Resets timer if window == 0 */
-                //         set_timer(si, entry, tcp_data->RTO, PERSIST);
-                //     }
-                // }
-                // else if (header->win == 0)
-                // {
-                //     /* Advertised window is 0 */
-                //     tcp_data->SND_WND = 0;
-                //     /* Starts persist timer */
-                //     set_timer(si, entry, tcp_data->RTO, PERSIST);
-                // }
-                
                 /* ACK check */
                 if ((tcp_data->SND_UNA <= recv_ack_seq) &&
                     (recv_ack_seq <= tcp_data->SND_NXT))
