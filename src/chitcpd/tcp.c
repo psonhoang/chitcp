@@ -634,15 +634,6 @@ void send_probe_segment(serverinfo_t *si, chisocketentry_t *entry)
             uint8_t payload[1];
             circular_buffer_peek_at(&tcp_data->send, payload, tcp_data->SND_NXT, 1);
             tcp_packet_t *send_packet = create_packet(si, entry, FIN_OFF, SYN_OFF, ACK_ON, payload, 1);
-            // chitcpd_tcp_packet_create(entry, send_packet, payload, 1);
-            // tcphdr_t *send_header = TCP_PACKET_HEADER(send_packet);
-            /* Update TCP variables and send header */
-            // send_header->ack = 1;
-            // send_header->syn = 0;
-            // send_header->fin = 0;
-            // send_header->ack_seq = tcp_data->RCV_NXT;
-            // send_header->seq = tcp_data->SND_NXT;
-            // send_header->win = tcp_data->RCV_WND;
             tcp_data->SND_NXT++;
             /* Send probe packet */
             chitcpd_send_tcp_packet(si, entry, send_packet);
@@ -653,6 +644,10 @@ void send_probe_segment(serverinfo_t *si, chisocketentry_t *entry)
             /* 1-byte probe segment has already been sent */
             chitcpd_send_tcp_packet(si, entry, tcp_data->probe_packet);
         }
+    }
+    else
+    {
+        free(send_packet);
     }
     return;
 }
@@ -953,39 +948,60 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
             {
                 chilog(DEBUG,"[LISTEN] IT COMES OTHER EVENTS IN THE PACKET_ARRIVAL HANDLER FUNCTION");
                 /* Probe check */
-                if (tcp_data->SND_WND == 0)
-                {
-                    /* Receives ACk after probe segment (probing) */
-                    chilog(DEBUG, "[LISTEN] RECEIVES ACK WHEN PROBING...");
-                    /* Cancel timer */
-                    mt_cancel_timer(tcp_data->tcp_timer, PERSIST);
-                    if (header->win > 0)
-                    {
-                        /* If window > 0 */
-                        free(tcp_data->probe_packet);
-                        circular_buffer_read(&tcp_data->send, NULL, 1, FALSE);
-                    }
-                    else
-                    {
-                        /* Resets timer if window == 0 */
-                        set_timer(si, entry, tcp_data->RTO, PERSIST);
-                    }
-                }
-                else if (header->win == 0)
-                {
-                    /* Advertised window is 0 */
-                    tcp_data->SND_WND = 0;
-                    /* Starts persist timer */
-                    chilog(DEBUG, "[PROBE] SENDING PROBE SEGMENT FOR THE FIRST TIME");
-                    send_probe_segment(si, entry);
-                    set_timer(si, entry, tcp_data->RTO, PERSIST);
-                }
+                // if (tcp_data->SND_WND == 0)
+                // {
+                //     /* Receives ACk after probe segment (probing) */
+                //     chilog(DEBUG, "[LISTEN] RECEIVES ACK WHEN PROBING...");
+                //     /* Cancel timer */
+                //     mt_cancel_timer(tcp_data->tcp_timer, PERSIST);
+                //     if (header->win > 0)
+                //     {
+                //         /* If window > 0 */
+                //         free(tcp_data->probe_packet);
+                //         circular_buffer_read(&tcp_data->send, NULL, 1, FALSE);
+                //     }
+                //     else
+                //     {
+                //         /* Resets timer if window == 0 */
+                //         set_timer(si, entry, tcp_data->RTO, PERSIST);
+                //     }
+                // }
+                // else if (header->win == 0)
+                // {
+                //     /* Advertised window is 0 */
+                //     tcp_data->SND_WND = 0;
+                //     /* Starts persist timer */
+                //     set_timer(si, entry, tcp_data->RTO, PERSIST);
+                // }
                 
                 /* ACK check */
                 if ((tcp_data->SND_UNA <= recv_ack_seq) &&
                     (recv_ack_seq <= tcp_data->SND_NXT))
                 {
                     remove_from_queue(si, entry, recv_ack_seq);
+                    single_timer_t *pst, *rtx;
+                    mt_get_timer_by_id(tcp_data->tcp_timer, PERSIST, &pst);
+                    mt_get_timer_by_id(tcp_data->tcp_timer, RETRANSMISSION, &rtx);
+                    if (recv_win == 0)
+                    {
+                        /* Advertised window == 0 */
+                        if (pst->active)
+                        {
+                            mt_cancel_timer(tcp_data->tcp_timer, PERSIST);
+                        }
+                        set_timer(si, entry, tcp_data->RTO, PERSIST);
+                    }
+                    else if (recv_win > 0 && tcp_data->SND_WND == 0)
+                    {
+                        /* Advertised window is updated to > 0 */
+                        mt_cancel_timer(tcp_data->tcp_timer, PERSIST);
+                        if (tcp_data->probe_packet != NULL)
+                        {
+                            free(tcp_data->probe_packet);
+                            tcp_data->probe_packet = NULL;
+                            circular_buffer_read(&tcp_data->send, NULL, 1, FALSE);
+                        }
+                    }
                     tcp_data->SND_UNA = recv_ack_seq;
                     tcp_data->SND_WND = recv_win;
                     chitcpd_process_send_buffer(si, entry);
@@ -1293,7 +1309,7 @@ int chitcpd_tcp_state_handle_ESTABLISHED(serverinfo_t *si,
     else if (event == TIMEOUT_PST)
     {
         /* Your code goes here */
-        //chitcpd_tcp_handle_TIMEOUT_PST(si, entry);
+        chitcpd_tcp_handle_TIMEOUT_PST(si, entry);
     }
     else
         chilog(WARNING, "In ESTABLISHED state, received unexpected event (%i).", event);
