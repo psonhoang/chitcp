@@ -134,7 +134,6 @@ typedef struct retransmission_queue
 {
     tcp_packet_t *packet;
     tcp_seq expected_ack_seq;
-    //struct timespec *timeout_spec;
     struct timespec *send_start;
     bool_t retransmitted;
     /* double linked list */
@@ -182,6 +181,7 @@ typedef struct tcp_data
 
     /* Has a CLOSE been requested on this socket? */
     bool_t closing;
+
     /* The state after CLOSE call */
     tcp_state_t state_after_close;
 
