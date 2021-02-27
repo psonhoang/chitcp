@@ -130,17 +130,27 @@ static inline char *tcp_event_str (tcp_event_type_t evt)
 typedef struct retransmission_queue retransmission_queue_t;
 typedef struct out_of_order_list out_of_order_list_t;
 
+/* A doubly linked list that represents retransmission queue
+ * Each item in the queue includes tcp packet that has been sent,
+ * but not acknowledged; the expected ack sequence for the packet;
+ * the time when the packet is sent; and whether the packet
+ * is a retranmitted packet
+ */
 typedef struct retransmission_queue
 {
     tcp_packet_t *packet;
     tcp_seq expected_ack_seq;
     struct timespec *send_start;
     bool_t retransmitted;
-    /* double linked list */
+    /* doubly linked list */
     retransmission_queue_t *prev;
     retransmission_queue_t *next;
 } retransmission_queue_t;
 
+/* A doubly linked list that represents out of our list
+ * Each item in the list includes tcp packet that is out of order,
+ * and the sequence number of that packet
+ */
 typedef struct out_of_order_list
 {
     tcp_packet_t *packet;
@@ -201,11 +211,13 @@ typedef struct tcp_data
     tcp_packet_t *probe_packet;
 
     /* RTT retransmission */
+    /* First RTT being calculated */
     bool_t first_RTT;
     uint64_t RTT;
     uint64_t RTO;
     uint64_t SRTT;
     uint64_t RTTVAR;
+    /* if retransmission timer is on */
     bool_t rtms_timer_on;
 } tcp_data_t;
 

@@ -76,6 +76,7 @@ typedef struct worker_args
     multi_timer_t *mt;
 } worker_args_t;
 
+/* Arguments for the callback function */
 typedef struct callback_arg
 {
     multi_timer_t *multi_timer; 
@@ -133,6 +134,10 @@ typedef struct multi_timer
 
 } multi_timer_t;
 
+/* Output timespec: the time a timer will timeout
+ * Input: the time interval it takes for a timer
+ * to time out starting from now
+ */
 struct timespec *count_timeout_spec(uint64_t timeout);
 
 /*
@@ -210,7 +215,8 @@ int mt_get_timer_by_id(multi_timer_t *mt, uint16_t id, single_timer_t **timer);
  *  - CHITCP_EINVAL: Invalid timer identifier, or specified a timer
  *                   that is already active
  */
-int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, mt_callback_func callback, void* callback_args);
+int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, 
+                    mt_callback_func callback, void* callback_args);
 
 
 /* mt_cancel_timer - Sets a timer
@@ -244,6 +250,14 @@ int mt_cancel_timer(multi_timer_t *mt, uint16_t id);
  */
 int mt_set_timer_name(multi_timer_t *mt, uint16_t id, const char *name);
 
+/* mt_chilog_single_timer - Prints a single timer using chilog
+ *
+ * level: chilog log level
+ *
+ * timer: Timer
+ *
+ * Returns: Always returns CHITCP_OK
+ */
 int mt_chilog_single_timer(loglevel_t level, single_timer_t *timer);
 
 
@@ -273,6 +287,7 @@ int mt_chilog(loglevel_t level, multi_timer_t *mt, bool active_only);
  *
  * Returns: 1 if the difference is negative, otherwise 0.
  */
-int timespec_subtract(struct timespec *result, struct timespec *x, struct timespec *y);
+int timespec_subtract(struct timespec *result, struct timespec *x, 
+                                                    struct timespec *y);
 
 #endif /* MULTITIMER_H_ */

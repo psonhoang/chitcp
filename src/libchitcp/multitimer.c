@@ -46,7 +46,11 @@
 #include "chitcp/multitimer.h"
 #include "chitcp/log.h"
 
-
+/* the thread that runs multi timers
+ * Input: void *args which is cast to
+ * callback_arg_t struct
+ * Output: nothing
+ */
 void *multitimer_thread(void *args)
 {
     chilog(INFO, "[MULTITIMER] MULTITIMER THREAD BEGINS\r\n");
@@ -85,15 +89,16 @@ void *multitimer_thread(void *args)
             }
             else
             {
-                chilog(DEBUG, "[MULTITIMER] WAKEN UP BUT NOT BECAUSE OF TIMEOUT!\r\n");
+                chilog(DEBUG, "[MULTITIMER] WAKEN UP BUT NOT BECAUSE OF TIMEOUT!");
             }
         }
     }
     pthread_mutex_unlock(&mt->lock);
-    chilog(DEBUG, "[MULTITIMER] MULTITIMER THREAD ENDS\r\n");
+    chilog(DEBUG, "[MULTITIMER] MULTITIMER THREAD ENDS");
     pthread_exit(NULL);
 }
 
+/* See multitimer.h */
 struct timespec *count_timeout_spec(uint64_t timeout)
 {
     struct timespec *result = malloc(sizeof (struct timespec));
@@ -109,7 +114,8 @@ struct timespec *count_timeout_spec(uint64_t timeout)
 }
 
 /* See multitimer.h */
-int timespec_subtract(struct timespec *result, struct timespec *x, struct timespec *y)
+int timespec_subtract(struct timespec *result, 
+            struct timespec *x, struct timespec *y)
 {
     struct timespec tmp;
     tmp.tv_sec = y->tv_sec;
@@ -178,6 +184,10 @@ int mt_init(multi_timer_t *mt, uint16_t num_timers)
     return CHITCP_OK;
 }
 
+/* free a timer 
+ * Input: the timer we want to free
+ * Output: nothing
+ */
 void free_single_timer(single_timer_t *timer)
 {
     free(timer->timeout_spec);
@@ -223,6 +233,12 @@ int mt_get_timer_by_id(multi_timer_t *mt, uint16_t id, single_timer_t **timer)
     return CHITCP_OK;
 }
 
+/* compare 2 timespecs 
+ * Input: 2 timespecs we want to compare
+ * Output: if first timer is larger than second timer return 1;
+ * if equal return 0;
+ * if smaller return -1;
+ */
 int timeoutcmp(single_timer_t *a, single_timer_t *b)
 {
     /* Function to compare absolute timeouts of timers */
@@ -254,7 +270,8 @@ int timeoutcmp(single_timer_t *a, single_timer_t *b)
 }
 
 /* See multitimer.h */
-int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, mt_callback_func callback, void* callback_args)
+int mt_set_timer(multi_timer_t *mt, uint16_t id, uint64_t timeout, 
+                    mt_callback_func callback, void* callback_args)
 {
     chilog(DEBUG, "[MULTITIMER] SET TIMER");
     /* Your code here */
@@ -371,7 +388,8 @@ int mt_chilog_single_timer(loglevel_t level, single_timer_t *timer)
          * Note: The timespec_subtract function can come in handy here*/
         diff.tv_sec = 0;
         diff.tv_nsec = 0;
-        chilog(level, "%i %s %lis %lins", timer->id, timer->name, diff.tv_sec, diff.tv_nsec);
+        chilog(level, "%i %s %lis %lins", timer->id, timer->name, 
+                                        diff.tv_sec, diff.tv_nsec);
     }
     else
         chilog(level, "%i %s", timer->id, timer->name);
