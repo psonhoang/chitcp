@@ -6,13 +6,5 @@ The chiTCP documentation is available at http://chi.cs.uchicago.edu/chitcp/
 Source for random_unint32() function:
 https://stackoverflow.com/questions/7622887/generating-a-random-32-bit-hexadecimal-value-in-c/58007974
 
-We pass tests for conn_init and conn_term at all LOG level
-When we run data_transfer tests at LOG=DEBUG level, we pass all the tests.
-However, when LOG level is not specified, we fail 3 tests:
-- echo_32768bytes
-- half_duplex_client_sends_32768bytes
-- half_duplex_server_sends_32768bytes
-
-When we run all tests with LOG=DEBUG, our final grade is 50/50.
-When LOG level is not specified, our final grade is 47.78/50
+We pass all tests (82/82) at INFO logging level, they also pass at lower level logging levels such as DEBUG
 
