@@ -346,6 +346,15 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
     }
 }
 
+void print_rtx_queue(retransmission_queue_t *head)
+{
+    retransmission_queue_t *elt;
+    DL_FOREACH(head, elt)
+    {
+        chilog(MINIMAL, "RTX packet seq: %d", elt->expected_ack_seq);
+    }
+}
+
 /* This function removes packets in the retransmission queue whose sequence
  * number is less than or equal to the given ACK sequence
  * @Params: serverinfo_t struct pointer, chisocketentry_t struct pointer,
@@ -375,9 +384,6 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
             head = head->next;
         }
         calculate_RTO(si, entry, head->send_start, head->retransmitted);
-        // payload_len = TCP_PAYLOAD_LEN(head->packet);
-        // tcp_data->unack_bytes -= payload_len;
-        // circular_buffer_read(&tcp_data->send, NULL, payload_len, FALSE);
         free_packet(head->packet);
         DL_DELETE(tcp_data->queue, head);
         free(head);
@@ -430,13 +436,22 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
     if (tcp_data->rtms_timer_on)
     {
         tcp_data->rtms_timer_on = false;
-        chilog(DEBUG, "CANCEL TIMER CALLED HERE");
+        chilog(MINIMAL, "CANCEL TIMER CALLED HERE");
         mt_cancel_timer(tcp_data->tcp_timer, RETRANSMISSION);
     }
     // tcp_data->rtms_timer_on = false;
     // chilog(DEBUG, "CANCEL TIMER CALLED HERE");
     // mt_cancel_timer(tcp_data->tcp_timer, RETRANSMISSION);
-    set_timer(si, entry, tcp_data->RTO, RETRANSMISSION);
+    int queue_len;
+    retransmission_queue_t *tmp;
+    DL_COUNT(tcp_data->queue, tmp, queue_len);
+    chilog(MINIMAL, "[REMOVE FROM QUEUE] queue len: %d; ack_seq: %d", queue_len, ack_seq);
+    print_rtx_queue(tcp_data->queue);
+    if (queue_len > 0)
+    {
+        chilog(MINIMAL, "[REMOVE FROM QUEUE] queue_len > 0 => set_timer()");
+        set_timer(si, entry, tcp_data->RTO, RETRANSMISSION);
+    }
 }
 
 /* This function adds a packet to the retransmission queue 
