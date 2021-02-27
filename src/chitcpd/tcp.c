@@ -146,9 +146,6 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
     void_param_2->entry = entry;
     for (int i = 0; i < tcp_data->tcp_timer->num_timers; i++)
     {
-        chilog(DEBUG, "[CALLBACK INIT] TIMER %d INITIALIZED", i);
-        // timer = tcp_data->tcp_timer->timers[i];
-        // timer->callback = callback_func;
         tcp_data->tcp_timer->timers[i]->callback = callback_func;
         if (i == 0)
         {
@@ -166,6 +163,7 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
     }
     tcp_data->queue = NULL;
     tcp_data->list = NULL;
+    tcp_data->biggest_ack = 0;
     tcp_data->RTO = SECOND;
     tcp_data->rtms_timer_on = false;
     tcp_data->first_RTT = false;
@@ -178,27 +176,6 @@ void tcp_data_init(serverinfo_t *si, chisocketentry_t *entry)
 void tcp_data_free(serverinfo_t *si, chisocketentry_t *entry)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
-    // free multitimer
-    mt_free(tcp_data->tcp_timer);
-    free(tcp_data->tcp_timer);
-    // free retransmission queue
-    retransmission_queue_t *elt1, *tmp1;
-    DL_FOREACH_SAFE(tcp_data->queue, elt1, tmp1) {
-        DL_DELETE(tcp_data->queue, elt1);
-        free(elt1);
-    }
-    free(tcp_data->queue);
-    // free out of order list
-    out_of_order_list_t *elt2, *tmp2;
-    DL_FOREACH_SAFE(tcp_data->list,elt2,tmp2) 
-    {
-      DL_DELETE(tcp_data->list, elt2);
-      free(elt2);
-    }
-    free(tcp_data->list);
-    // free send and receive buffers
-    circular_buffer_free(&tcp_data->send);
-    circular_buffer_free(&tcp_data->recv);
     // free pending packets list
     chitcp_packet_list_destroy(&tcp_data->pending_packets);
     // destroy thread mutex and cond
@@ -230,12 +207,6 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
                     struct timespec *start_time, bool_t retransmitted)
 {
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
-    //tcp_data->RTO = MIN_RTO;
-    if (retransmitted)
-    {
-        chilog(DEBUG, "[RTO CALCULATION] RTO RETRANSMITTED TIME IS %i", tcp_data->RTO);
-        return;
-    }
     struct timespec *result = malloc (sizeof (struct timespec));
     struct timespec *end_time = malloc (sizeof (struct timespec));
     clock_gettime(CLOCK_REALTIME, end_time);
@@ -255,11 +226,6 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
             chilog(DEBUG, "[RTO CALCULATION] MIN RTO CASE");    
             tcp_data->RTO = MIN_RTO;
         }
-        // else if (RTO > MAX_RTO)
-        // {
-        //     chilog(DEBUG, "[RTO CALCULATION] MAX RTO CASE");    
-        //     tcp_data->RTO = MAX_RTO;
-        // }
         else
         {
             chilog(DEBUG, "[RTO CALCULATION] NORMAL RTO CASE");    
@@ -280,11 +246,6 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
             chilog(DEBUG, "[RTO CALCULATION] MIN RTO CASE");    
             tcp_data->RTO = MIN_RTO;
         }
-        // else if (RTO > MAX_RTO)
-        // {
-        //     chilog(DEBUG, "[RTO CALCULATION] MAX RTO CASE");    
-        //     tcp_data->RTO = MAX_RTO;
-        // }
         else
         {
             chilog(DEBUG, "[RTO CALCULATION] NORMAL RTO CASE");  
@@ -294,7 +255,6 @@ void calculate_RTO(serverinfo_t *si, chisocketentry_t *entry,
         return;
     }
 }
-/* P2a */
 
 /* HELPER FUNCTION */
 
@@ -328,8 +288,9 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
     if (timer_type == RETRANSMISSION)
     {
         chilog(DEBUG, "[SET_TIMER] RETRANSMISSION TIMER");
-        if ((!tcp_data->rtms_timer_on) && (queue != NULL)) // check if send buffer is empty
+        if ((!tcp_data->rtms_timer_on) && (queue != NULL))
         {
+            /* Check if send buffer is empty */
             chilog(DEBUG, "[SET_TIMER] RTO TIME IS %i", tcp_data->RTO);
             tcp_data->rtms_timer_on = true;
             mt_set_timer(tcp_data->tcp_timer, timer_type, timeout, 
@@ -346,6 +307,7 @@ void set_timer(serverinfo_t *si, chisocketentry_t *entry,
     }
 }
 
+/* DEBUG function to print out packets' sequence number in RTX queue */
 void print_rtx_queue(retransmission_queue_t *head)
 {
     retransmission_queue_t *elt;
@@ -413,7 +375,6 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
     if (tcp_data->rtms_timer_on)
     {
         tcp_data->rtms_timer_on = false;
-        chilog(MINIMAL, "CANCEL TIMER CALLED HERE");
         mt_cancel_timer(tcp_data->tcp_timer, RETRANSMISSION);
     }
     // tcp_data->rtms_timer_on = false;
@@ -422,11 +383,10 @@ void remove_from_queue(serverinfo_t *si, chisocketentry_t *entry, tcp_seq ack_se
     int queue_len;
     retransmission_queue_t *tmp;
     DL_COUNT(tcp_data->queue, tmp, queue_len);
-    chilog(MINIMAL, "[REMOVE FROM QUEUE] queue len: %d; ack_seq: %d", queue_len, ack_seq);
-    print_rtx_queue(tcp_data->queue);
+    // chilog(MINIMAL, "[REMOVE FROM QUEUE] queue len: %d; ack_seq: %d", queue_len, ack_seq);
+    // print_rtx_queue(tcp_data->queue);
     if (queue_len > 0)
     {
-        chilog(MINIMAL, "[REMOVE FROM QUEUE] queue_len > 0 => set_timer()");
         set_timer(si, entry, tcp_data->RTO, RETRANSMISSION);
     }
 }
@@ -607,7 +567,6 @@ void chitcpd_process_send_buffer(serverinfo_t *si, chisocketentry_t *entry)
 int chitcpd_tcp_handle_TIMEOUT_RTX(serverinfo_t *si, chisocketentry_t *entry)
 {
     /* Check retransmission queue to check what packets need to be re-sent */
-    chilog(MINIMAL, "[TIMEOUT] CALL TIMEOUT RTX EVENT HANDLER");
     tcp_data_t *tcp_data = &entry->socket_state.active.tcp_data;
     tcp_data->RTO = tcp_data->RTO*2;
     retransmission_queue_t *elt;
@@ -829,10 +788,17 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
 
         if (recv_seq > tcp_data->RCV_NXT)
         {
+            /* Out of order segment */
             out_of_order_list_t *item = malloc(sizeof(out_of_order_list_t));
             item->seq = recv_seq;
             item->packet = packet;
             DL_APPEND(tcp_data->list, item);
+            return 0;
+        }
+        
+        if (recv_seq < tcp_data->RCV_NXT)
+        {
+            /* Redundant segment */
             return 0;
         }
 
@@ -1014,10 +980,13 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                     tcp_data->RCV_NXT += bytes_written;
                     tcp_data->RCV_WND = 
                         circular_buffer_available(&tcp_data->recv);
-                    send_packet = create_packet(si, entry, FIN_OFF, SYN_OFF, 
-                                                ACK_ON, NULL, 0);
-                    chitcpd_send_tcp_packet(si, entry, send_packet);
-                    
+                        
+                    if(recv_seq == tcp_data->biggest_ack)
+                    {
+                        /* Time to send ACK segment */
+                        tcp_data->biggest_ack = 0;
+                    }
+
                     /* Process out of order delivery list */
                     out_of_order_list_t *elt;
                     int ooo_len;
@@ -1037,6 +1006,10 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                                 chitcp_packet_list_append(
                                     &tcp_data->pending_packets, 
                                     elt->packet);
+                                
+                                /* Wait until a packet with this seq number
+                                before sending an ACK segment to sender */
+                                tcp_data->biggest_ack = elt->seq;
                                 /* Update value of next expected contingous 
                                 sequence */
                                 next_seq += TCP_PAYLOAD_LEN(elt->packet);
@@ -1044,6 +1017,14 @@ int chitcpd_tcp_handle_PACKET_ARRIVAL(serverinfo_t *si,
                                 free(elt);
                             }
                         }
+                    }
+
+                    if (tcp_data->biggest_ack == 0)
+                    {
+                        /* Send ACK segment */
+                        send_packet = create_packet(si, entry, FIN_OFF, SYN_OFF,
+                                                    ACK_ON, NULL, 0);
+                        chitcpd_send_tcp_packet(si, entry, send_packet);
                     }
                 }
             }
@@ -1133,7 +1114,7 @@ int chitcpd_tcp_state_handle_CLOSED(serverinfo_t *si,
     else if (event == CLEANUP)
     {
         /* Any additional cleanup goes here */
-        // tcp_data_free(si, entry);
+        tcp_data_free(si, entry);
     }
     else
         chilog(WARNING, "In CLOSED state, received unexpected event.");

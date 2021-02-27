@@ -194,6 +194,9 @@ typedef struct tcp_data
     /* Out-of-order list */
     out_of_order_list_t *list;
 
+    /* Wait until this segment to send ACK segment */
+    tcp_seq biggest_ack;
+
     /* PST probe packet */
     tcp_packet_t *probe_packet;
 
