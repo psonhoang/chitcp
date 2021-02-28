@@ -9,4 +9,6 @@ https://stackoverflow.com/questions/7622887/generating-a-random-32-bit-hexadecim
 The automated grading on Gradescope failed, but on Linux server,
 We pass all tests (82/82) at INFO logging level, and they also pass at lower level logging levels such as DEBUG.
 
+*UPDATE: We have removed the included uthash.h from multitimer.h (reason for Gradescope's fail)
+
 

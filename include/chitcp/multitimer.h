@@ -46,7 +46,6 @@
 #include "chitcp/types.h"
 #include "chitcp/utlist.h"
 #include "chitcp/log.h"
-#include "chitcp/uthash.h"
 
 #define MAX_TIMER_NAME_LEN (16)
 #define SECOND      (1000000000L)
